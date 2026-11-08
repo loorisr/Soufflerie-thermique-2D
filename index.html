@@ -1,0 +1,1497 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soufflerie thermique 2D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Atelier technique : panneau d'instrument clair, accent cuivre (thermique), données en mono.
+   Disposition : bandeau de commande, canevas de simulation à gauche, panneau latéral à onglets. */
+:root {
+  --bg: #eef0f2;
+  --panel: #ffffff;
+  --ink: #1b2430;
+  --muted: #5d6877;
+  --line: #d3d8de;
+  --accent: #b4531f;
+  --accent-soft: #f6e6dc;
+  --good: #2f7d4f;
+  --warn: #a86a00;
+  --field-bg: #c9ced5;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161b; --panel: #1b2128; --ink: #e5e9ee; --muted: #98a3b1; --line: #2f3843;
+    --accent: #e0814a; --accent-soft: #3a2619; --good: #5fbf86; --warn: #e2a93b; --field-bg: #2a3038;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161b; --panel: #1b2128; --ink: #e5e9ee; --muted: #98a3b1; --line: #2f3843;
+  --accent: #e0814a; --accent-soft: #3a2619; --good: #5fbf86; --warn: #e2a93b; --field-bg: #2a3038;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--font-body); }
+button, select, input { font: inherit; color: inherit; }
+.app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 16px; font-weight: 600; margin: 0; letter-spacing: .01em; }
+header h1 span { color: var(--muted); font-weight: 400; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-left: auto; }
+.sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+.btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.btn:hover { border-color: var(--muted); }
+.btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 500; min-width: 104px; }
+.btn.small { padding: 3px 8px; font-size: 13px; }
+.btn.danger { color: #b3261e; }
+.main { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+.stage { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; min-width: 0; min-height: 0; overflow: auto; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.tool { border: 1px solid var(--line); background: var(--panel); padding: 5px 10px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.tool[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.tool i { width: 12px; height: 12px; border-radius: 2px; display: inline-block; }
+.sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; }
+.field-pick { display: flex; gap: 6px; align-items: center; }
+.canvas-wrap { position: relative; width: 100%; background: var(--field-bg); border-radius: 6px; overflow: hidden; touch-action: none; }
+.canvas-wrap canvas { display: block; width: 100%; height: 100%; }
+.legend { display: flex; align-items: center; gap: 10px; font: 12px var(--font-mono); color: var(--muted); flex-wrap: wrap; }
+.legend canvas { width: 220px; height: 10px; border-radius: 2px; }
+.readout { font: 12px var(--font-mono); color: var(--muted); min-height: 18px; }
+.statusline { display: flex; flex-wrap: wrap; gap: 6px 16px; font: 12px var(--font-mono); color: var(--muted); }
+.pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font: 500 11px var(--font-body); border: 1px solid currentColor; }
+.pill.good { color: var(--good); } .pill.warn { color: var(--warn); }
+aside { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button { flex: 1; border: 0; background: none; padding: 10px 4px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 500; }
+.tabpanel { padding: 14px 16px; overflow: auto; flex: 1; display: none; }
+.tabpanel.on { display: block; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+h3 { font-size: 14px; margin: 0 0 8px; font-weight: 600; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.row { display: flex; flex-direction: column; gap: 3px; }
+.row label { font-size: 12px; color: var(--muted); }
+.row input, .row select { width: 100%; padding: 5px 7px; border: 1px solid var(--line); border-radius: 5px; background: var(--bg); font-family: var(--font-mono); font-size: 13px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.block { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 14px; }
+.note { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+.complist { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.compitem { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; background: var(--bg); }
+.compitem[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.compitem i { width: 10px; height: 10px; border-radius: 2px; }
+.res { border: 1px solid var(--line); border-radius: 6px; padding: 10px; margin-bottom: 8px; }
+.res .big { font: 500 20px var(--font-mono); font-variant-numeric: tabular-nums; }
+.res .sub { font: 12px var(--font-mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.res canvas { width: 100%; height: 40px; display: block; margin-top: 6px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font: 12px var(--font-mono); font-variant-numeric: tabular-nums; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; text-align: right; }
+.warnbox { border: 1px solid var(--warn); color: var(--warn); border-radius: 6px; padding: 8px 10px; font-size: 12px; margin-bottom: 10px; display: none; }
+@media (max-width: 860px) {
+  .main { grid-template-columns: 1fr; }
+  aside { border-left: 0; border-top: 1px solid var(--line); }
+  .app { height: auto; }
+  .stage { overflow: visible; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Soufflerie thermique 2D <span>· LBM MRT, convection naturelle et forcée</span></h1>
+    <div class="controls">
+      <label for="preset" class="sr">Cas</label>
+      <select id="preset" class="btn" aria-label="Charger un cas exemple">
+        <option value="pac">Pompe à chaleur, unité extérieure</option>
+        <option value="piece">Radiateur dans une pièce</option>
+        <option value="conduit">Conduit avec batterie chaude</option>
+        <option value="eau">Panache thermique dans l'eau</option>
+      </select>
+      <button class="btn primary" id="run" type="button">Démarrer</button>
+      <button class="btn" id="reset" type="button">Réinitialiser</button>
+    </div>
+  </header>
+  <div class="main">
+    <section class="stage">
+      <div class="toolbar" role="toolbar" aria-label="Outils">
+        <button class="tool" data-tool="select" aria-pressed="true" type="button">Sélection</button>
+        <button class="tool" data-tool="solid" aria-pressed="false" type="button"><i style="background:#7c8591"></i>Paroi</button>
+        <button class="tool" data-tool="exchanger" aria-pressed="false" type="button"><i style="background:#c0392b"></i>Échangeur</button>
+        <button class="tool" data-tool="fan" aria-pressed="false" type="button"><i style="background:#2e86c1"></i>Ventilateur</button>
+        <button class="tool" data-tool="probe" aria-pressed="false" type="button">Sonde</button>
+        <span class="sep"></span>
+        <div class="field-pick">
+          <label for="field">Champ</label>
+          <select id="field" class="btn">
+            <option value="T">Température</option>
+            <option value="u">Vitesse</option>
+            <option value="p">Pression</option>
+            <option value="w">Vorticité</option>
+          </select>
+        </div>
+        <label class="check"><input type="checkbox" id="optParticles" checked> Particules</label>
+        <label class="check"><input type="checkbox" id="optVectors"> Vecteurs</label>
+      </div>
+      <div class="canvas-wrap" id="wrap"><canvas id="cv"></canvas></div>
+      <div class="legend"><span id="legMin">–</span><canvas id="legend" width="220" height="10"></canvas><span id="legMax">–</span><span id="legUnit"></span></div>
+      <div class="readout" id="readout">Dessinez une zone avec Paroi, Échangeur ou Ventilateur ; la Sonde lit les valeurs en un point.</div>
+      <div class="statusline" id="status"></div>
+    </section>
+    <aside>
+      <div class="tabs" role="tablist">
+        <button role="tab" aria-selected="true" data-tab="comp" type="button">Composants</button>
+        <button role="tab" aria-selected="false" data-tab="res" type="button">Résultats</button>
+        <button role="tab" aria-selected="false" data-tab="param" type="button">Domaine</button>
+      </div>
+      <div class="tabpanel on" id="tab-comp">
+        <h2>Composants</h2>
+        <div class="complist" id="complist"></div>
+        <div id="props"></div>
+      </div>
+      <div class="tabpanel" id="tab-res">
+        <div class="warnbox" id="warn"></div>
+        <h2>Bilan</h2>
+        <div id="results"></div>
+      </div>
+      <div class="tabpanel" id="tab-param">
+        <h2>Domaine et fluide</h2>
+        <div class="grid2">
+          <div class="row"><label for="pFluid">Fluide</label><select id="pFluid"><option value="air">Air</option><option value="eau">Eau</option></select></div>
+          <div class="row"><label for="pTamb">T ambiante (°C)</label><input id="pTamb" type="number" step="1"></div>
+          <div class="row"><label for="pL">Largeur (m)</label><input id="pL" type="number" step="0.1" min="0.1"></div>
+          <div class="row"><label for="pH">Hauteur (m)</label><input id="pH" type="number" step="0.1" min="0.1"></div>
+          <div class="row"><label for="pDepth">Profondeur (m)</label><input id="pDepth" type="number" step="0.1" min="0.01"></div>
+          <div class="row"><label for="pNx">Résolution</label><select id="pNx"><option value="160">160 cellules</option><option value="240">240 cellules</option><option value="320">320 cellules</option><option value="420">420 cellules</option><option value="480">480 cellules (GPU)</option><option value="640">640 cellules (GPU)</option><option value="960">960 cellules (GPU)</option></select></div>
+          <div class="row" style="grid-column:1/-1"><label for="pEngine">Moteur de calcul</label><select id="pEngine"><option value="auto">GPU (WebGPU) si disponible</option><option value="cpu">Processeur uniquement</option></select></div>
+        </div>
+        <label class="check" style="margin-top:10px"><input type="checkbox" id="pGrav"> Gravité (convection naturelle)</label>
+        <div class="block">
+          <h3>Bords du domaine</h3>
+          <div class="grid2">
+            <div class="row"><label for="sGauche">Gauche</label><select id="sGauche"><option value="paroi">Paroi</option><option value="ouvert">Ouvert</option></select></div>
+            <div class="row"><label for="sDroite">Droite</label><select id="sDroite"><option value="paroi">Paroi</option><option value="ouvert">Ouvert</option></select></div>
+            <div class="row"><label for="sHaut">Haut</label><select id="sHaut"><option value="paroi">Paroi</option><option value="ouvert">Ouvert</option></select></div>
+            <div class="row"><label for="sBas">Bas</label><select id="sBas"><option value="paroi">Paroi</option><option value="ouvert">Ouvert</option></select></div>
+          </div>
+          <p class="note">Un bord ouvert est à pression ambiante ; l'air qui entre est à la température ambiante.</p>
+        </div>
+        <button class="btn primary" id="applyParams" type="button" style="margin-top:14px">Appliquer et réinitialiser</button>
+        <div class="block">
+          <h3>Numérique</h3>
+          <dl class="kv" id="numinfo"></dl>
+          <p class="note">Le pas de temps est choisi pour que la vitesse de référence reste à Mach 0,12 sur le réseau. L'écoulement utilise un collisionneur MRT avec un modèle LES de Smagorinsky ; la viscosité de base est relevée au minimum stable du maillage. La diffusivité thermique n'est relevée que là où l'écoulement est rapide. Affiner la grille (GPU) rapproche les résultats de la physique ; les valeurs restent indicatives.</p>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+<script>
+// ===== Solveur LBM thermique 2D — D2Q9 MRT (écoulement) + D2Q5 BGK (température, diffusivité adaptée au Péclet de maille) =====
+// Boussinesq, LES Smagorinsky, zones poreuses avec source de chaleur (échangeurs),
+// zones de force asservies au débit (ventilateurs).
+// Stockage : f~ = f - w (écart au repos) et θ = T - Tamb, en simple précision (identique au GPU).
+
+const FLUIDS = {
+  air: { name: 'Air', rho: 1.204, nu: 1.50e-5, Pr: 0.71, beta: 3.43e-3, cp: 1006 },
+  eau: { name: 'Eau', rho: 998.2, nu: 1.00e-6, Pr: 7.0, beta: 2.07e-4, cp: 4182 },
+};
+
+const CX = [0, 1, 0, -1, 0, 1, -1, -1, 1];
+const CY = [0, 0, 1, 0, -1, 1, 1, -1, -1];
+const W9 = [4 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 9, 1 / 36, 1 / 36, 1 / 36, 1 / 36];
+const OPP = [0, 3, 4, 1, 2, 7, 8, 5, 6];
+const W5 = [1 / 3, 1 / 6, 1 / 6, 1 / 6, 1 / 6];
+// Matrice MRT de Lallemand & Luo : (ρ, e, ε, jx, qx, jy, qy, pxx, pxy)
+const MM = [
+  [1, 1, 1, 1, 1, 1, 1, 1, 1],
+  [-4, -1, -1, -1, -1, 2, 2, 2, 2],
+  [4, -2, -2, -2, -2, 1, 1, 1, 1],
+  [0, 1, 0, -1, 0, 1, -1, -1, 1],
+  [0, -2, 0, 2, 0, 1, -1, -1, 1],
+  [0, 0, 1, 0, -1, 1, 1, -1, -1],
+  [0, 0, -2, 0, 2, 1, 1, -1, -1],
+  [0, 1, -1, 1, -1, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 1, -1, 1, -1],
+];
+const MNORM = [9, 36, 36, 6, 12, 6, 12, 4, 4];
+const S_E = 1.19, S_EPS = 1.4;   // taux de relaxation des moments non hydrodynamiques
+const CS = 0.16, PRT = 0.85;     // Smagorinsky, Prandtl turbulent
+const TAU_MIN = 0.503, TAUG_MIN = 0.503;
+const PE_CELL = 6;               // Péclet de maille max. : la diffusivité thermique n'est relevée que là où l'écoulement est rapide
+const MAXF = 16, MAXE = 16;
+
+const DIRS = { droite: [1, 0], gauche: [-1, 0], haut: [0, 1], bas: [0, -1] };
+
+class Solver {
+  constructor(cfg, comps) {
+    this.cfg = cfg;
+    this.fl = FLUIDS[cfg.fluid];
+    const nx = cfg.nx, ny = Math.max(8, Math.round(cfg.nx * cfg.H / cfg.L));
+    this.nx = nx; this.ny = ny;
+    const N = nx * ny; this.N = N;
+    this.dx = cfg.L / nx;
+    this.f0 = new Float32Array(9 * N); this.f1 = new Float32Array(9 * N);
+    this.g0 = new Float32Array(5 * N); this.g1 = new Float32Array(5 * N);
+    this.rho = new Float32Array(N).fill(1);
+    this.ux = new Float32Array(N); this.uy = new Float32Array(N);
+    this.T = new Float32Array(N).fill(cfg.Tamb);    // température réelle (affichage)
+    this.th = new Float32Array(N);                   // θ = T - Tamb (calcul)
+    this.type = new Uint8Array(N);                   // 0 fluide, 1 solide adiabatique, 2 solide à T imposée
+    this.Tw = new Float32Array(N);                   // θ de paroi
+    this.nb = new Int32Array(9 * N);
+    this.sponge = new Float32Array(N);
+    this.drag = new Float32Array(N);
+    this.hk = new Float32Array(N);
+    this.hT = new Float32Array(N);                   // θ batterie
+    this.hq = new Float32Array(N);
+    this.zone = new Int32Array(N).fill(-1);
+    this.fan = new Int32Array(N).fill(-1);
+    this.reset = new Uint32Array(N);                 // cellules à réinitialiser (GPU)
+    this.step = 0;
+    this.fans = []; this.exch = [];
+    this.setScales(comps);
+    this.setComponents(comps);
+  }
+
+  setScales(comps) {
+    const cfg = this.cfg, fl = this.fl, dx = this.dx;
+    let U = 0.05, dTmax = 2;
+    for (const c of comps) {
+      if (c.type === 'fan') {
+        const d = DIRS[c.dir];
+        const wperp = d[0] !== 0 ? c.h : c.w;
+        U = Math.max(U, (c.Q / 3600) / cfg.depth / Math.max(wperp, dx));
+      }
+      if (c.type === 'exchanger') dTmax = Math.max(dTmax, c.mode === 'T' ? Math.abs(c.Tc - cfg.Tamb) : 15);
+      if (c.type === 'solid' && c.fixedT) dTmax = Math.max(dTmax, Math.abs(c.T - cfg.Tamb));
+    }
+    if (cfg.gravity) U = Math.max(U, 0.5 * Math.sqrt(9.81 * fl.beta * dTmax * cfg.H));
+    this.Uref = U;
+    this.ulat = 0.07;
+    this.dt = this.ulat * dx / U;
+    this.cu = dx / this.dt;
+    this.ps = fl.rho * this.cu * this.cu;
+    const nul = fl.nu * this.dt / (dx * dx);
+    const all = fl.nu / fl.Pr * this.dt / (dx * dx);
+    this.tauPhys = 0.5 + 3 * nul;
+    this.tau0 = Math.max(this.tauPhys, TAU_MIN);
+    this.taug0 = Math.max(0.5 + 3 * all, TAUG_MIN);
+    this.nuEff = (this.tau0 - 0.5) / 3 * dx * dx / this.dt;
+    this.alphaEff = (this.taug0 - 0.5) / 3 * dx * dx / this.dt;
+    this.gb = cfg.gravity ? 9.81 * fl.beta * this.dt * this.dt / dx : 0;
+  }
+
+  setComponents(comps) {
+    const { nx, ny, N, dx, cfg, fl } = this;
+    const prev = this.type.slice();
+    const prevFans = this.fans;
+    this.type.fill(0); this.drag.fill(0); this.hk.fill(0); this.hq.fill(0); this.hT.fill(0);
+    this.zone.fill(-1); this.fan.fill(-1); this.reset.fill(0);
+    this.exch = []; this.fans = [];
+    const cells = (c) => {
+      const out = [];
+      const i0 = Math.max(0, Math.floor(c.x / dx)), i1 = Math.min(nx - 1, Math.ceil((c.x + c.w) / dx));
+      const j0 = Math.max(0, Math.floor(c.y / dx)), j1 = Math.min(ny - 1, Math.ceil((c.y + c.h) / dx));
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
+        const x = (i + 0.5) * dx, y = (j + 0.5) * dx;
+        if (x >= c.x && x < c.x + c.w && y >= c.y && y < c.y + c.h) out.push(j * nx + i);
+      }
+      return out;
+    };
+    for (const c of comps) {
+      if (c.type !== 'fan' || this.fans.length >= MAXF) continue;
+      const id = this.fans.length;
+      const d = DIRS[c.dir];
+      const cl = cells(c);
+      const thick = Math.max(1, Math.round((d[0] !== 0 ? c.w : c.h) / dx));
+      const wperp = d[0] !== 0 ? c.h : c.w;
+      const old = prevFans.find(f => f.comp.id === c.id);
+      this.fans.push({ comp: c, dx: d[0], dy: d[1], cells: cl, n: cl.length, thick, wperp,
+        F: old ? old.F : 0, meas: old ? old.meas : 0 });
+      for (const i of cl) this.fan[i] = id;
+    }
+    for (const c of comps) {
+      if (c.type !== 'exchanger' || this.exch.length >= MAXE) continue;
+      const id = this.exch.length;
+      const cl = cells(c);
+      const e = Math.max(dx, Math.min(c.w, c.h));
+      const C2 = c.dp / (e * fl.rho * Math.max(0.01, c.vnom) ** 2);
+      const area = cl.length * dx * dx;
+      let k = 0, q = 0;
+      if (c.mode === 'T') k = 1 - Math.exp(-c.ha / (fl.rho * fl.cp) * this.dt);
+      else q = (c.P / cfg.depth) / Math.max(area, 1e-9) / (fl.rho * fl.cp) * this.dt;
+      this.exch.push({ comp: c, cells: cl, n: cl.length, P: 0, Tm: cfg.Tamb });
+      for (const i of cl) {
+        this.zone[i] = id; this.drag[i] = C2 * dx;
+        this.hk[i] = k; this.hT[i] = c.Tc - cfg.Tamb; this.hq[i] = q;
+        this.fan[i] = -1;
+      }
+    }
+    for (const c of comps) {
+      if (c.type !== 'solid') continue;
+      for (const i of cells(c)) {
+        this.type[i] = c.fixedT ? 2 : 1; this.Tw[i] = c.fixedT ? c.T - cfg.Tamb : 0;
+        this.zone[i] = -1; this.fan[i] = -1; this.drag[i] = 0; this.hk[i] = 0; this.hq[i] = 0;
+      }
+    }
+    for (let i = 0; i < N; i++) {
+      if (this.type[i] === 0 && prev[i] !== 0) { this.initCell(i); this.reset[i] = 1; }
+      if (this.type[i] !== 0) {
+        this.ux[i] = 0; this.uy[i] = 0; this.rho[i] = 1;
+        this.T[i] = this.type[i] === 2 ? this.Tw[i] + cfg.Tamb : cfg.Tamb;
+      }
+    }
+    this.buildNeighbors();
+  }
+
+  initCell(i) {
+    const N = this.N;
+    for (let k = 0; k < 9; k++) { this.f0[k * N + i] = 0; this.f1[k * N + i] = 0; }
+    for (let k = 0; k < 5; k++) { this.g0[k * N + i] = 0; this.g1[k * N + i] = 0; }
+    this.rho[i] = 1; this.ux[i] = 0; this.uy[i] = 0; this.th[i] = 0; this.T[i] = this.cfg.Tamb;
+  }
+
+  // voisins : >=0 source fluide ; -1 rebond adiabatique ; -2 bord ouvert ; <=-3 paroi à T imposée (-3-idx)
+  buildNeighbors() {
+    const { nx, ny, N, type, nb } = this;
+    const s = this.cfg.sides;
+    const Ls = Math.max(6, Math.round(Math.min(nx, ny) * 0.08));
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const idx = j * nx + i;
+      for (let k = 0; k < 9; k++) {
+        const si = i - CX[k], sj = j - CY[k];
+        let v;
+        if (si < 0 || si >= nx || sj < 0 || sj >= ny) {
+          let open = true;
+          if (si < 0) open = open && s.gauche === 'ouvert';
+          if (si >= nx) open = open && s.droite === 'ouvert';
+          if (sj < 0) open = open && s.bas === 'ouvert';
+          if (sj >= ny) open = open && s.haut === 'ouvert';
+          v = open ? -2 : -1;
+        } else {
+          const sidx = sj * nx + si;
+          v = type[sidx] === 0 ? sidx : (type[sidx] === 2 ? -3 - sidx : -1);
+        }
+        nb[k * N + idx] = v;
+      }
+      let d = 1e9;
+      if (s.gauche === 'ouvert') d = Math.min(d, i);
+      if (s.droite === 'ouvert') d = Math.min(d, nx - 1 - i);
+      if (s.bas === 'ouvert') d = Math.min(d, j);
+      if (s.haut === 'ouvert') d = Math.min(d, ny - 1 - j);
+      const r = d < Ls ? 1 - d / Ls : 0;
+      this.sponge[idx] = 1.2 * r * r;
+    }
+  }
+
+  ramp() { return Math.min(1, this.step / 3000); }
+  fanTargetLat(fn) {
+    const c = fn.comp;
+    return (c.Q / 3600) / this.cfg.depth / Math.max(fn.wperp, this.dx) / this.cu;
+  }
+  fanKi(fn) { return 2e-3 / fn.thick; }
+
+  run(n) { for (let s = 0; s < n; s++) this.stepOnce(); this.sync(); }
+
+  stepOnce() {
+    const { N, nb, type, drag, hk, hT, hq, zone, fan, Tw, sponge } = this;
+    const fA = this.f0, fB = this.f1, gA = this.g0, gB = this.g1;
+    const rhoA = this.rho, uxA = this.ux, uyA = this.uy, thA = this.th;
+    const tau0 = this.tau0, taug0 = this.taug0, gb = this.gb;
+    const Cs2x = 18 * Math.SQRT2 * CS * CS;
+    const fans = this.fans, exch = this.exch;
+    const ramp = this.ramp();
+    const nf = fans.length, ne = exch.length;
+    const fanF = new Float64Array(nf), fdx = new Float64Array(nf), fdy = new Float64Array(nf);
+    for (let q = 0; q < nf; q++) { fanF[q] = fans[q].F; fdx[q] = fans[q].dx; fdy[q] = fans[q].dy; }
+    const fanAcc = new Float64Array(nf), exAcc = new Float64Array(ne), exT = new Float64Array(ne);
+    const f = new Float64Array(9), g = new Float64Array(5), m = new Float64Array(9);
+
+    for (let idx = 0; idx < N; idx++) {
+      if (type[idx] !== 0) continue;
+      const u0x = uxA[idx], u0y = uyA[idx], u0sq = u0x * u0x + u0y * u0y;
+      for (let k = 0; k < 9; k++) {
+        const v = nb[k * N + idx];
+        if (v >= 0) f[k] = fA[k * N + v];
+        else if (v === -2) {
+          const cu = CX[k] * u0x + CY[k] * u0y;
+          f[k] = -fA[OPP[k] * N + idx] + 2 * W9[k] * (4.5 * cu * cu - 1.5 * u0sq);
+        } else f[k] = fA[OPP[k] * N + idx];
+      }
+      const thc = thA[idx];
+      for (let k = 0; k < 5; k++) {
+        const v = nb[k * N + idx];
+        if (v >= 0) g[k] = gA[k * N + v];
+        else if (v === -2) {
+          const cu = CX[k] * u0x + CY[k] * u0y;     // >0 : l'écoulement entre par ce bord
+          const tin = cu > 0 ? 0 : thc;
+          g[k] = W5[k] * tin * (1 + 3 * cu);
+        } else if (v === -1) g[k] = gA[OPP[k] * N + idx];
+        else g[k] = -gA[OPP[k] * N + idx] + 2 * W5[k] * Tw[-3 - v];
+      }
+      // moments
+      {
+        const f0 = f[0], f1 = f[1], f2 = f[2], f3 = f[3], f4 = f[4], f5 = f[5], f6 = f[6], f7 = f[7], f8 = f[8];
+        const sa = f1 + f2 + f3 + f4, sd = f5 + f6 + f7 + f8;
+        m[0] = f0 + sa + sd; m[1] = -4 * f0 - sa + 2 * sd; m[2] = 4 * f0 - 2 * sa + sd;
+        m[3] = f1 - f3 + f5 - f6 - f7 + f8; m[4] = -2 * f1 + 2 * f3 + f5 - f6 - f7 + f8;
+        m[5] = f2 - f4 + f5 + f6 - f7 - f8; m[6] = -2 * f2 + 2 * f4 + f5 + f6 - f7 - f8;
+        m[7] = f1 - f2 + f3 - f4; m[8] = f5 - f6 + f7 - f8;
+      }
+      let drho = m[0];
+      let rho = 1 + drho;
+      if (!(rho > 0.2 && rho < 5)) { rho = 1; drho = 0; }
+      const mx = m[3], my = m[5];
+      const th = g[0] + g[1] + g[2] + g[3] + g[4];
+      // forces
+      let Fx = 0, Fy = rho * gb * th;
+      const fq = fan[idx];
+      if (fq >= 0) { Fx += rho * fanF[fq] * fdx[fq]; Fy += rho * fanF[fq] * fdy[fq]; }
+      let ux = (mx + 0.5 * Fx) / rho, uy = (my + 0.5 * Fy) / rho;
+      const C = drag[idx];
+      if (C > 0) {
+        const s = 0.5 * C * Math.sqrt(ux * ux + uy * uy) + 0.002;
+        ux /= (1 + s); uy /= (1 + s);
+        Fx -= 2 * rho * s * ux; Fy -= 2 * rho * s * uy;
+      }
+      const um = Math.sqrt(ux * ux + uy * uy);
+      if (um > 0.3) { ux *= 0.3 / um; uy *= 0.3 / um; }
+      if (fq >= 0) fanAcc[fq] += ux * fdx[fq] + uy * fdy[fq];
+      const usq = ux * ux + uy * uy;
+      // équilibres (écarts au repos)
+      const eEq = -2 * drho + 3 * rho * usq;
+      const epsEq = drho - 3 * rho * usq;
+      const pxxEq = rho * (ux * ux - uy * uy), pxyEq = rho * ux * uy;
+      const qxEq = -rho * ux, qyEq = -rho * uy;
+      // LES : norme du tenseur hors équilibre (moments du second ordre)
+      const nE = m[1] - eEq, nXX = m[7] - pxxEq, nXY = m[8] - pxyEq;
+      const Pxx = (nE / 3 + nXX) * 0.5, Pyy = (nE / 3 - nXX) * 0.5, Pxy = nXY;
+      const Q = Math.sqrt(Pxx * Pxx + Pyy * Pyy + 2 * Pxy * Pxy);
+      const t0 = tau0 + sponge[idx];
+      const tau = 0.5 * (t0 + Math.sqrt(t0 * t0 + Cs2x * Q / rho));
+      const sv = 1 / tau;
+      const sq = 8 * (2 - sv) / (8 - sv);
+      // termes de force en moments (Guo)
+      const uF = ux * Fx + uy * Fy;
+      // collision
+      m[1] = m[1] - S_E * (m[1] - eEq) + (1 - 0.5 * S_E) * 6 * uF;
+      m[2] = m[2] - S_EPS * (m[2] - epsEq) + (1 - 0.5 * S_EPS) * (-6 * uF);
+      m[3] = mx + Fx;
+      m[4] = m[4] - sq * (m[4] - qxEq) + (1 - 0.5 * sq) * (-Fx);
+      m[5] = my + Fy;
+      m[6] = m[6] - sq * (m[6] - qyEq) + (1 - 0.5 * sq) * (-Fy);
+      m[7] = m[7] - sv * (m[7] - pxxEq) + (1 - 0.5 * sv) * 2 * (ux * Fx - uy * Fy);
+      m[8] = m[8] - sv * (m[8] - pxyEq) + (1 - 0.5 * sv) * (uy * Fx + ux * Fy);
+      m[0] = drho;
+      {
+        const a0 = m[0] / 9, a1 = m[1] / 36, a2 = m[2] / 36, a3 = m[3] / 6, a4 = m[4] / 12, a5 = m[5] / 6, a6 = m[6] / 12, a7 = m[7] / 4, a8 = m[8] / 4;
+        const b = a0 - a1 - 2 * a2, d = a0 + 2 * a1 + a2;
+        fB[idx] = a0 - 4 * a1 + 4 * a2;
+        fB[N + idx] = b + a3 - 2 * a4 + a7;
+        fB[2 * N + idx] = b + a5 - 2 * a6 - a7;
+        fB[3 * N + idx] = b - a3 + 2 * a4 + a7;
+        fB[4 * N + idx] = b - a5 + 2 * a6 - a7;
+        fB[5 * N + idx] = d + a3 + a4 + a5 + a6 + a8;
+        fB[6 * N + idx] = d - a3 - a4 + a5 + a6 - a8;
+        fB[7 * N + idx] = d - a3 - a4 - a5 - a6 + a8;
+        fB[8 * N + idx] = d + a3 + a4 - a5 - a6 - a8;
+      }
+      // thermique TRT
+      let src = 0;
+      const z = zone[idx];
+      if (z >= 0) {
+        src = hk[idx] > 0 ? hk[idx] * (hT[idx] - th) : hq[idx];
+        exAcc[z] += src; exT[z] += th;
+      }
+      const tg = Math.max(taug0 + (tau - tau0) / PRT, 0.5 + 3 * um / PE_CELL);
+      const og = 1 / tg;
+      for (let k = 0; k < 5; k++) {
+        const ge = W5[k] * th * (1 + 3 * (CX[k] * ux + CY[k] * uy));
+        gB[k * N + idx] = g[k] - og * (g[k] - ge) + W5[k] * src;
+      }
+      rhoA[idx] = rho; uxA[idx] = ux; uyA[idx] = uy; thA[idx] = th + src;
+    }
+    this.f0 = fB; this.f1 = fA; this.g0 = gB; this.g1 = gA;
+    this.step++;
+    for (let q = 0; q < nf; q++) {
+      const fn = fans[q];
+      fn.meas = fanAcc[q] / Math.max(1, fn.n);
+      const target = ramp * this.fanTargetLat(fn);
+      fn.F = Math.max(-0.02, Math.min(0.02, fn.F + this.fanKi(fn) * (target - fn.meas)));
+    }
+    const kP = this.fl.rho * this.fl.cp * this.dx * this.dx * this.cfg.depth / this.dt;
+    for (let z = 0; z < ne; z++) {
+      const e = exch[z];
+      e.P = e.P * 0.98 + exAcc[z] * kP * 0.02;
+      e.Tm = exT[z] / Math.max(1, e.n) + this.cfg.Tamb;
+    }
+  }
+
+  // met à jour T réel pour l'affichage
+  sync() { const Ta = this.cfg.Tamb; for (let i = 0; i < this.N; i++) if (this.type[i] === 0) this.T[i] = this.th[i] + Ta; }
+
+  fanReport(fn) {
+    return { Q: fn.meas * this.cu * fn.wperp * this.cfg.depth * 3600, dp: fn.F * fn.thick * this.ps };
+  }
+  simTime() { return this.step * this.dt; }
+}
+
+if (typeof module !== 'undefined') module.exports = { Solver, FLUIDS, DIRS };
+
+// ===== Portage WebGPU du solveur (mêmes équations que solver.js) =====
+const WGSL = /* wgsl */`
+struct Params {
+  N: u32, nx: u32, nf: u32, ne: u32,
+  tau0: f32, taug0: f32, gb: f32, cs2x: f32,
+  ramp: f32, peCell: f32, sE: f32, sEps: f32,
+};
+@group(0) @binding(0) var<uniform> P: Params;
+// fg : populations f (0..8) puis g (9..13), en double tampon
+@group(0) @binding(1) var<storage, read> A: array<f32>;
+@group(0) @binding(2) var<storage, read_write> B: array<f32>;
+@group(0) @binding(3) var<storage, read_write> mac: array<vec4<f32>>;
+@group(0) @binding(4) var<storage, read> nb: array<i32>;
+// cell : [drag, hk, hT, hq], [sponge, Tw, -, -], [type, zone, fan, reset]
+@group(0) @binding(5) var<storage, read> cell: array<vec4<f32>>;
+// st : fanCfg 0..31 (2 par ventilateur), fanState 32..47, exState 48..63
+@group(0) @binding(6) var<storage, read_write> st: array<vec4<f32>>;
+@group(0) @binding(7) var<storage, read_write> acc: array<atomic<i32>, 48>;
+
+const FAN_SCALE: f32 = 100000.0;
+const HEAT_SCALE: f32 = 20000.0;
+const T_SCALE: f32 = 100.0;
+
+var<private> CX: array<f32, 9> = array<f32, 9>(0.0, 1.0, 0.0, -1.0, 0.0, 1.0, -1.0, -1.0, 1.0);
+var<private> CY: array<f32, 9> = array<f32, 9>(0.0, 0.0, 1.0, 0.0, -1.0, 1.0, 1.0, -1.0, -1.0);
+var<private> W9: array<f32, 9> = array<f32, 9>(0.444444444, 0.111111111, 0.111111111, 0.111111111, 0.111111111, 0.0277777778, 0.0277777778, 0.0277777778, 0.0277777778);
+var<private> OPP: array<u32, 9> = array<u32, 9>(0u, 3u, 4u, 1u, 2u, 7u, 8u, 5u, 6u);
+var<private> W5: array<f32, 5> = array<f32, 5>(0.333333333, 0.166666667, 0.166666667, 0.166666667, 0.166666667);
+
+@compute @workgroup_size(64)
+fn step(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  let N = P.N;
+  if (idx >= N) { return; }
+  let ci = vec4<i32>(cell[3u * idx + 2u]);
+  if (ci.x != 0) { return; }
+  let c0 = cell[3u * idx];
+  let c1 = cell[3u * idx + 1u];
+  let mc = mac[idx];
+  let u0x = mc.y; let u0y = mc.z; let thc = mc.w;
+  let u0sq = u0x * u0x + u0y * u0y;
+  var f: array<f32, 9>;
+  var g: array<f32, 5>;
+  for (var k = 0u; k < 9u; k++) {
+    let v = nb[k * N + idx];
+    if (v >= 0) { f[k] = A[k * N + u32(v)]; }
+    else if (v == -2) {
+      let cu = CX[k] * u0x + CY[k] * u0y;
+      f[k] = -A[OPP[k] * N + idx] + 2.0 * W9[k] * (4.5 * cu * cu - 1.5 * u0sq);
+    } else { f[k] = A[OPP[k] * N + idx]; }
+  }
+  for (var k = 0u; k < 5u; k++) {
+    let v = nb[k * N + idx];
+    if (v >= 0) { g[k] = A[(9u + k) * N + u32(v)]; }
+    else if (v == -2) {
+      let cu = CX[k] * u0x + CY[k] * u0y;
+      var tin = thc;
+      if (cu > 0.0) { tin = 0.0; }
+      g[k] = W5[k] * tin * (1.0 + 3.0 * cu);
+    } else if (v == -1) { g[k] = A[(9u + OPP[k]) * N + idx]; }
+    else {
+      let s = u32(-3 - v);
+      g[k] = -A[(9u + OPP[k]) * N + idx] + 2.0 * W5[k] * cell[3u * s + 1u].y;
+    }
+  }
+  // moments MRT
+  let sa = f[1] + f[2] + f[3] + f[4];
+  let sd = f[5] + f[6] + f[7] + f[8];
+  var m0 = f[0] + sa + sd;
+  var m1 = -4.0 * f[0] - sa + 2.0 * sd;
+  var m2 = 4.0 * f[0] - 2.0 * sa + sd;
+  let mx = f[1] - f[3] + f[5] - f[6] - f[7] + f[8];
+  var m4 = -2.0 * f[1] + 2.0 * f[3] + f[5] - f[6] - f[7] + f[8];
+  let my = f[2] - f[4] + f[5] + f[6] - f[7] - f[8];
+  var m6 = -2.0 * f[2] + 2.0 * f[4] + f[5] + f[6] - f[7] - f[8];
+  var m7 = f[1] - f[2] + f[3] - f[4];
+  var m8 = f[5] - f[6] + f[7] - f[8];
+  var drho = m0;
+  var rho = 1.0 + drho;
+  if (!(rho > 0.2 && rho < 5.0)) { rho = 1.0; drho = 0.0; }
+  let th = g[0] + g[1] + g[2] + g[3] + g[4];
+  // forces
+  var Fx = 0.0;
+  var Fy = rho * P.gb * th;
+  let fq = ci.z;
+  var fd = vec2<f32>(0.0, 0.0);
+  if (fq >= 0) {
+    let fc = st[2u * u32(fq)];
+    fd = fc.xy;
+    let F = st[32u + u32(fq)].x;
+    Fx += rho * F * fd.x; Fy += rho * F * fd.y;
+  }
+  var ux = (mx + 0.5 * Fx) / rho;
+  var uy = (my + 0.5 * Fy) / rho;
+  let C = c0.x;
+  if (C > 0.0) {
+    let s = 0.5 * C * sqrt(ux * ux + uy * uy) + 0.002;
+    ux = ux / (1.0 + s); uy = uy / (1.0 + s);
+    Fx -= 2.0 * rho * s * ux; Fy -= 2.0 * rho * s * uy;
+  }
+  let um0 = sqrt(ux * ux + uy * uy);
+  if (um0 > 0.3) { ux *= 0.3 / um0; uy *= 0.3 / um0; }
+  let um = min(um0, 0.3);
+  if (fq >= 0) {
+    atomicAdd(&acc[u32(fq)], i32(round((ux * fd.x + uy * fd.y) * FAN_SCALE)));
+  }
+  let usq = ux * ux + uy * uy;
+  let eEq = -2.0 * drho + 3.0 * rho * usq;
+  let epsEq = drho - 3.0 * rho * usq;
+  let pxxEq = rho * (ux * ux - uy * uy);
+  let pxyEq = rho * ux * uy;
+  let nE = m1 - eEq; let nXX = m7 - pxxEq; let nXY = m8 - pxyEq;
+  let Pxx = (nE / 3.0 + nXX) * 0.5; let Pyy = (nE / 3.0 - nXX) * 0.5;
+  let Q = sqrt(Pxx * Pxx + Pyy * Pyy + 2.0 * nXY * nXY);
+  let t0 = P.tau0 + c1.x;
+  let tau = 0.5 * (t0 + sqrt(t0 * t0 + P.cs2x * Q / rho));
+  let sv = 1.0 / tau;
+  let sq = 8.0 * (2.0 - sv) / (8.0 - sv);
+  let uF = ux * Fx + uy * Fy;
+  m1 = m1 - P.sE * (m1 - eEq) + (1.0 - 0.5 * P.sE) * 6.0 * uF;
+  m2 = m2 - P.sEps * (m2 - epsEq) + (1.0 - 0.5 * P.sEps) * (-6.0 * uF);
+  let m3 = mx + Fx;
+  m4 = m4 - sq * (m4 + rho * ux) + (1.0 - 0.5 * sq) * (-Fx);
+  let m5 = my + Fy;
+  m6 = m6 - sq * (m6 + rho * uy) + (1.0 - 0.5 * sq) * (-Fy);
+  m7 = m7 - sv * (m7 - pxxEq) + (1.0 - 0.5 * sv) * 2.0 * (ux * Fx - uy * Fy);
+  m8 = m8 - sv * (m8 - pxyEq) + (1.0 - 0.5 * sv) * (uy * Fx + ux * Fy);
+  let a0 = drho / 9.0; let a1 = m1 / 36.0; let a2 = m2 / 36.0; let a3 = m3 / 6.0; let a4 = m4 / 12.0;
+  let a5 = m5 / 6.0; let a6 = m6 / 12.0; let a7 = m7 / 4.0; let a8 = m8 / 4.0;
+  let b = a0 - a1 - 2.0 * a2; let d = a0 + 2.0 * a1 + a2;
+  B[idx] = a0 - 4.0 * a1 + 4.0 * a2;
+  B[N + idx] = b + a3 - 2.0 * a4 + a7;
+  B[2u * N + idx] = b + a5 - 2.0 * a6 - a7;
+  B[3u * N + idx] = b - a3 + 2.0 * a4 + a7;
+  B[4u * N + idx] = b - a5 + 2.0 * a6 - a7;
+  B[5u * N + idx] = d + a3 + a4 + a5 + a6 + a8;
+  B[6u * N + idx] = d - a3 - a4 + a5 + a6 - a8;
+  B[7u * N + idx] = d - a3 - a4 - a5 - a6 + a8;
+  B[8u * N + idx] = d + a3 + a4 - a5 - a6 - a8;
+  // thermique
+  var src = 0.0;
+  let z = ci.y;
+  if (z >= 0) {
+    if (c0.y > 0.0) { src = c0.y * (c0.z - th); } else { src = c0.w; }
+    atomicAdd(&acc[16u + u32(z)], i32(round(src * HEAT_SCALE)));
+    atomicAdd(&acc[32u + u32(z)], i32(round(th * T_SCALE)));
+  }
+  let tg = max(P.taug0 + (tau - P.tau0) / 0.85, 0.5 + 3.0 * um / P.peCell);
+  let og = 1.0 / tg;
+  for (var k = 0u; k < 5u; k++) {
+    let ge = W5[k] * th * (1.0 + 3.0 * (CX[k] * ux + CY[k] * uy));
+    B[(9u + k) * N + idx] = g[k] - og * (g[k] - ge) + W5[k] * src;
+  }
+  mac[idx] = vec4<f32>(rho, ux, uy, th + src);
+}
+
+@compute @workgroup_size(32)
+fn control(@builtin(local_invocation_id) lid: vec3<u32>) {
+  let t = lid.x;
+  let stepc = st[63].x;
+  let ramp = min(1.0, stepc / 3000.0);
+  if (t < 16u) {
+    if (t < P.nf) {
+      let c0 = st[2u * t]; let c1 = st[2u * t + 1u];
+      let meas = f32(atomicExchange(&acc[t], 0)) / FAN_SCALE * c0.z;
+      var s = st[32u + t];
+      s.x = clamp(s.x + c0.w * (ramp * c1.x - meas), -0.02, 0.02);
+      s.y = meas;
+      st[32u + t] = s;
+    }
+  } else {
+    let e = t - 16u;
+    if (e < P.ne) {
+      let v = f32(atomicExchange(&acc[16u + e], 0)) / HEAT_SCALE;
+      let tt = f32(atomicExchange(&acc[32u + e], 0)) / T_SCALE;
+      var s = st[48u + e];
+      s.x = s.x * 0.98 + v * 0.02;
+      s.y = tt * s.z;
+      st[48u + e] = s;
+    }
+  }
+  workgroupBarrier();
+  if (t == 31u) { st[63].x = stepc + 1.0; }
+}
+
+@compute @workgroup_size(64)
+fn resetCells(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  let N = P.N;
+  if (idx >= N) { return; }
+  if (cell[3u * idx + 2u].w == 0.0) { return; }
+  for (var k = 0u; k < 14u; k++) { B[k * N + idx] = 0.0; }
+  mac[idx] = vec4<f32>(1.0, 0.0, 0.0, 0.0);
+}
+`;
+
+class GpuSolver extends Solver {
+  static async create(cfg, comps) {
+    if (!navigator.gpu) throw new Error('WebGPU indisponible');
+    const adapter = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    if (!adapter) throw new Error('Aucun adaptateur WebGPU');
+    const need = 14 * 4 * cfg.nx * Math.max(8, Math.round(cfg.nx * cfg.H / cfg.L));
+    const lim = adapter.limits;
+    if (need > lim.maxStorageBufferBindingSize) throw new Error('Grille trop grande pour ce GPU');
+    const dev = await adapter.requestDevice({ requiredLimits: {
+      maxStorageBufferBindingSize: Math.max(need, Math.min(lim.maxStorageBufferBindingSize, 134217728)),
+      maxBufferSize: Math.max(need, Math.min(lim.maxBufferSize, 268435456)),
+    } });
+    const s = new GpuSolver(cfg, comps);
+    s.initGpu(dev);
+    return s;
+  }
+
+  initGpu(dev) {
+    this.dev = dev;
+    const N = this.N, B = GPUBufferUsage;
+    const mk = (size, usage) => dev.createBuffer({ size: Math.max(16, Math.ceil(size / 16) * 16), usage });
+    const S = B.STORAGE | B.COPY_DST | B.COPY_SRC;
+    this.bufs = {
+      params: mk(48, B.UNIFORM | B.COPY_DST),
+      fg: [mk(14 * N * 4, S), mk(14 * N * 4, S)],
+      mac: mk(4 * N * 4, S),
+      nb: mk(9 * N * 4, S),
+      cell: mk(12 * N * 4, S),
+      st: mk(64 * 16, S),
+      acc: mk(48 * 4, S),
+      readMac: mk(4 * N * 4, B.MAP_READ | B.COPY_DST),
+      readStat: mk(64 * 16, B.MAP_READ | B.COPY_DST),
+    };
+    const mod = dev.createShaderModule({ code: WGSL });
+    this.shaderInfo = mod.getCompilationInfo ? mod.getCompilationInfo() : null;
+    const layout = dev.createBindGroupLayout({ entries: [
+      { binding: 0, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'uniform' } },
+      { binding: 1, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      { binding: 2, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 3, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 4, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      { binding: 5, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'read-only-storage' } },
+      { binding: 6, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+      { binding: 7, visibility: GPUShaderStage.COMPUTE, buffer: { type: 'storage' } },
+    ] });
+    const pl = dev.createPipelineLayout({ bindGroupLayouts: [layout] });
+    this.pipeStep = dev.createComputePipeline({ layout: pl, compute: { module: mod, entryPoint: 'step' } });
+    this.pipeCtrl = dev.createComputePipeline({ layout: pl, compute: { module: mod, entryPoint: 'control' } });
+    this.pipeReset = dev.createComputePipeline({ layout: pl, compute: { module: mod, entryPoint: 'resetCells' } });
+    const b = this.bufs;
+    this.bg = [0, 1].map(p => dev.createBindGroup({ layout, entries: [
+      { binding: 0, resource: { buffer: b.params } },
+      { binding: 1, resource: { buffer: b.fg[p] } }, { binding: 2, resource: { buffer: b.fg[1 - p] } },
+      { binding: 3, resource: { buffer: b.mac } }, { binding: 4, resource: { buffer: b.nb } },
+      { binding: 5, resource: { buffer: b.cell } }, { binding: 6, resource: { buffer: b.st } },
+      { binding: 7, resource: { buffer: b.acc } },
+    ] }));
+    this.parity = 0;
+    this.busy = false;
+    this.lost = false;
+    dev.lost.then(() => { this.lost = true; });
+    this.uploadAll(true);
+  }
+
+  // super.setComponents est appelé par le constructeur avant l'init GPU
+  setComponents(comps) {
+    super.setComponents(comps);
+    if (this.dev) this.uploadAll(false);
+  }
+
+  uploadAll(first) {
+    const q = this.dev.queue, b = this.bufs, N = this.N;
+    q.writeBuffer(b.nb, 0, this.nb);
+    const cf = new Float32Array(12 * N);
+    for (let i = 0; i < N; i++) {
+      const o = 12 * i;
+      cf[o] = this.drag[i]; cf[o + 1] = this.hk[i]; cf[o + 2] = this.hT[i]; cf[o + 3] = this.hq[i];
+      cf[o + 4] = this.sponge[i]; cf[o + 5] = this.Tw[i];
+      cf[o + 8] = this.type[i]; cf[o + 9] = this.zone[i]; cf[o + 10] = this.fan[i]; cf[o + 11] = first ? 1 : this.reset[i];
+    }
+    q.writeBuffer(b.cell, 0, cf);
+    const ss = new Float32Array(256);
+    this.fans.forEach((fn, i) => { ss[4 * (32 + i)] = fn.F; ss[4 * (32 + i) + 1] = fn.meas; });
+    this.exch.forEach((e, i) => { ss[4 * (48 + i)] = e.Plat || 0; ss[4 * (48 + i) + 2] = 1 / Math.max(1, e.n); });
+    ss[4 * 63] = this.step;
+    q.writeBuffer(b.st, 0, ss);
+    q.writeBuffer(b.acc, 0, new Int32Array(48));
+    this.writeFanCfg();
+    this.writeParams();
+    // remise à zéro des cellules redevenues fluides (dans les deux tampons)
+    const enc = this.dev.createCommandEncoder();
+    const pass = enc.beginComputePass();
+    pass.setPipeline(this.pipeReset);
+    const wg = Math.ceil(N / 64);
+    pass.setBindGroup(0, this.bg[0]); pass.dispatchWorkgroups(wg);
+    pass.setBindGroup(0, this.bg[1]); pass.dispatchWorkgroups(wg);
+    pass.end();
+    q.submit([enc.finish()]);
+  }
+
+  writeFanCfg() {
+    const fc = new Float32Array(128);
+    this.fans.forEach((fn, i) => {
+      fc[8 * i] = fn.dx; fc[8 * i + 1] = fn.dy; fc[8 * i + 2] = 1 / Math.max(1, fn.n); fc[8 * i + 3] = this.fanKi(fn);
+      fc[8 * i + 4] = this.fanTargetLat(fn); fc[8 * i + 5] = fn.thick;
+    });
+    this.dev.queue.writeBuffer(this.bufs.st, 0, fc);
+  }
+
+  writeParams() {
+    const buf = new ArrayBuffer(48), u = new Uint32Array(buf), f = new Float32Array(buf);
+    u[0] = this.N; u[1] = this.nx; u[2] = this.fans.length; u[3] = this.exch.length;
+    f[4] = this.tau0; f[5] = this.taug0; f[6] = this.gb; f[7] = 18 * Math.SQRT2 * CS * CS;
+    f[8] = this.ramp(); f[9] = PE_CELL; f[10] = S_E; f[11] = S_EPS;
+    this.dev.queue.writeBuffer(this.bufs.params, 0, buf);
+  }
+
+  // n pas sur le GPU puis relecture des champs ; résout quand les données sont prêtes
+  async runAsync(n) {
+    if (this.busy || this.lost) return false;
+    this.busy = true;
+    const dev = this.dev, b = this.bufs, N = this.N;
+    this.writeParams();
+    this.writeFanCfg();
+    const enc = dev.createCommandEncoder();
+    const pass = enc.beginComputePass();
+    const wg = Math.ceil(N / 64);
+    for (let s = 0; s < n; s++) {
+      pass.setPipeline(this.pipeStep);
+      pass.setBindGroup(0, this.bg[this.parity]);
+      pass.dispatchWorkgroups(wg);
+      pass.setPipeline(this.pipeCtrl);
+      pass.dispatchWorkgroups(1);
+      this.parity ^= 1;
+    }
+    pass.end();
+    enc.copyBufferToBuffer(b.mac, 0, b.readMac, 0, 16 * N);
+    enc.copyBufferToBuffer(b.st, 0, b.readStat, 0, 1024);
+    dev.queue.submit([enc.finish()]);
+    this.step += n;
+    try {
+      await Promise.all([b.readMac.mapAsync(GPUMapMode.READ), b.readStat.mapAsync(GPUMapMode.READ)]);
+    } catch (e) { this.busy = false; this.lost = true; return false; }
+    const m = new Float32Array(b.readMac.getMappedRange());
+    const Ta = this.cfg.Tamb;
+    for (let i = 0; i < N; i++) {
+      if (this.type[i] !== 0) continue;
+      this.rho[i] = m[4 * i]; this.ux[i] = m[4 * i + 1]; this.uy[i] = m[4 * i + 2];
+      this.th[i] = m[4 * i + 3]; this.T[i] = m[4 * i + 3] + Ta;
+    }
+    b.readMac.unmap();
+    const st = new Float32Array(b.readStat.getMappedRange());
+    const kP = this.fl.rho * this.fl.cp * this.dx * this.dx * this.cfg.depth / this.dt;
+    this.fans.forEach((fn, i) => { fn.F = st[4 * (32 + i)]; fn.meas = st[4 * (32 + i) + 1]; });
+    this.exch.forEach((e, i) => { e.Plat = st[4 * (48 + i)]; e.P = e.Plat * kP; e.Tm = st[4 * (48 + i) + 1] + Ta; });
+    b.readStat.unmap();
+    this.busy = false;
+    return true;
+  }
+
+  run(n) { return this.runAsync(n); }
+  destroy() { try { Object.values(this.bufs).flat().forEach(x => x.destroy()); this.dev.destroy(); } catch (e) {} }
+}
+
+</script>
+<script>
+(() => {
+// ---------- cas exemples ----------
+const PRESETS = {
+  pac: {
+    cfg: { fluid: 'air', L: 2.0, H: 1.0, nx: 240, Tamb: 7, gravity: true, depth: 0.5,
+      sides: { gauche: 'ouvert', droite: 'ouvert', bas: 'paroi', haut: 'ouvert' } },
+    comps: [
+      { type: 'solid', name: 'Carrosserie bas', x: 0.6, y: 0.12, w: 0.8, h: 0.03, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Carrosserie haut', x: 0.6, y: 0.75, w: 0.8, h: 0.03, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Pied', x: 0.7, y: 0.0, w: 0.04, h: 0.12, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Pied', x: 1.26, y: 0.0, w: 0.04, h: 0.12, fixedT: false, T: 20 },
+      { type: 'exchanger', name: 'Évaporateur', x: 0.62, y: 0.15, w: 0.05, h: 0.6, mode: 'T', Tc: -3, ha: 30000, P: -3000, dp: 40, vnom: 2 },
+      { type: 'fan', name: 'Ventilateur', x: 1.3, y: 0.15, w: 0.06, h: 0.6, dir: 'droite', Q: 1800 },
+    ] },
+  piece: {
+    cfg: { fluid: 'air', L: 4.0, H: 2.6, nx: 240, Tamb: 16, gravity: true, depth: 1,
+      sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'solid', name: 'Radiateur', x: 0.12, y: 0.15, w: 0.08, h: 0.6, fixedT: true, T: 55 },
+      { type: 'solid', name: 'Fenêtre froide', x: 3.94, y: 0.9, w: 0.06, h: 1.3, fixedT: true, T: 5 },
+      { type: 'solid', name: 'Bureau', x: 1.6, y: 0.72, w: 1.2, h: 0.04, fixedT: false, T: 20 },
+    ] },
+  conduit: {
+    cfg: { fluid: 'air', L: 3.0, H: 0.6, nx: 320, Tamb: 15, gravity: false, depth: 0.4,
+      sides: { gauche: 'ouvert', droite: 'ouvert', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'fan', name: 'Ventilateur', x: 0.35, y: 0.0, w: 0.08, h: 0.6, dir: 'droite', Q: 1200 },
+      { type: 'exchanger', name: 'Batterie chaude', x: 1.0, y: 0.0, w: 0.08, h: 0.6, mode: 'P', Tc: 50, ha: 30000, P: 4000, dp: 30, vnom: 1.5 },
+      { type: 'solid', name: 'Obstacle', x: 1.8, y: 0.22, w: 0.16, h: 0.16, fixedT: false, T: 20 },
+    ] },
+  eau: {
+    cfg: { fluid: 'eau', L: 0.6, H: 0.4, nx: 240, Tamb: 15, gravity: true, depth: 0.1,
+      sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'solid', name: 'Résistance', x: 0.27, y: 0.02, w: 0.06, h: 0.025, fixedT: true, T: 40 },
+      { type: 'solid', name: 'Paroi froide', x: 0.57, y: 0.15, w: 0.03, h: 0.25, fixedT: true, T: 8 },
+    ] },
+};
+
+const DEF = {
+  solid: { name: 'Paroi', fixedT: false, T: 40 },
+  exchanger: { name: 'Échangeur', mode: 'T', Tc: 35, ha: 30000, P: 2000, dp: 40, vnom: 2 },
+  fan: { name: 'Ventilateur', dir: 'droite', Q: 1000 },
+};
+const TYPE_LABEL = { solid: 'Paroi', exchanger: 'Échangeur', fan: 'Ventilateur' };
+
+let cfg, comps, solver, running = false, selected = null, nextId = 1;
+let engine = 'cpu', engineChoice = 'auto', gpuErr = '', batch = 40, building = false;
+const CPU_MAX_NX = 320;
+let tool = 'select', field = 'T';
+let history = {};      // id -> [valeurs]
+let stepsPerSec = 0;
+
+const $ = (id) => document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d'), wrap = $('wrap');
+const off = document.createElement('canvas'), octx = off.getContext('2d');
+let img;
+
+// ---------- palettes ----------
+function makeLut(stops) {
+  const lut = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255 * (stops.length - 1);
+    const a = Math.min(stops.length - 2, Math.floor(t)), f = t - a;
+    for (let c = 0; c < 3; c++) lut[i * 3 + c] = stops[a][c] + (stops[a + 1][c] - stops[a][c]) * f;
+  }
+  return lut;
+}
+const LUTS = {
+  T: makeLut([[49, 54, 149], [69, 117, 180], [116, 173, 209], [224, 243, 248], [254, 224, 144], [244, 109, 67], [165, 0, 38]]),
+  u: makeLut([[13, 8, 135], [84, 2, 163], [139, 10, 165], [185, 50, 137], [219, 92, 104], [244, 136, 73], [254, 188, 43], [240, 249, 33]]),
+  p: makeLut([[64, 0, 75], [118, 42, 131], [194, 165, 207], [247, 247, 247], [166, 219, 160], [27, 120, 55], [0, 68, 27]]),
+  w: makeLut([[5, 48, 97], [67, 147, 195], [209, 229, 240], [247, 247, 247], [253, 219, 199], [214, 96, 77], [103, 0, 31]]),
+};
+const UNITS = { T: '°C', u: 'm/s', p: 'Pa', w: '1/s' };
+
+// ---------- construction ----------
+async function load(name) {
+  const p = JSON.parse(JSON.stringify(PRESETS[name]));
+  cfg = p.cfg;
+  if (engineChoice !== 'cpu' && navigator.gpu) cfg.nx = Math.min(960, cfg.nx * 2);
+  comps = p.comps.map(c => ({ id: nextId++, ...c }));
+  selected = null;
+  await rebuild();
+  syncParamForm();
+}
+async function rebuild() {
+  building = true;
+  if (solver && solver.destroy) solver.destroy();
+  let s = null;
+  engine = 'cpu';
+  if (engineChoice !== 'cpu' && navigator.gpu) {
+    try { s = await GpuSolver.create(cfg, comps); engine = 'gpu'; gpuErr = ''; }
+    catch (e) { gpuErr = e.message || String(e); }
+  } else if (!navigator.gpu) gpuErr = 'WebGPU non pris en charge par ce navigateur';
+  if (!s) { if (cfg.nx > CPU_MAX_NX) cfg.nx = CPU_MAX_NX; s = new Solver(cfg, comps); }
+  solver = s; batch = 40;
+  building = false;
+  off.width = solver.nx; off.height = solver.ny;
+  img = octx.createImageData(solver.nx, solver.ny);
+  history = {};
+  range = null;
+  initParticles();
+  resize();
+  renderLists();
+  updateNumInfo();
+}
+function componentsChanged() {
+  solver.setComponents(comps);
+  renderLists();
+}
+
+// ---------- géométrie écran ----------
+function resize() {
+  const w = wrap.clientWidth;
+  const h = Math.max(120, Math.round(w * cfg.H / cfg.L));
+  wrap.style.height = h + 'px';
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+  draw();
+}
+new ResizeObserver(() => resize()).observe(wrap);
+const sx = () => cv.width / cfg.L;
+const toPx = (x, y) => [x * sx(), cv.height - y * sx()];
+function toPhys(ev) {
+  const r = cv.getBoundingClientRect();
+  const X = (ev.clientX - r.left) / r.width * cfg.L;
+  const Y = (1 - (ev.clientY - r.top) / r.height) * cfg.H;
+  return [X, Y];
+}
+
+// ---------- particules ----------
+let parts;
+function initParticles() {
+  const n = Math.round(1800 * Math.min(1, cfg.L * cfg.H / 1.5 + 0.4));
+  parts = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) respawn(i);
+}
+function respawn(i) {
+  for (let t = 0; t < 10; t++) {
+    const x = Math.random() * solver.nx, y = Math.random() * solver.ny;
+    const c = Math.floor(y) * solver.nx + Math.floor(x);
+    if (solver.type[c] === 0) { parts[i * 3] = x; parts[i * 3 + 1] = y; parts[i * 3 + 2] = Math.random() * 400; return; }
+  }
+  parts[i * 3 + 2] = 0;
+}
+function advectParticles(steps) {
+  const { nx, ny, ux, uy, type } = solver;
+  const n = parts.length / 3;
+  for (let i = 0; i < n; i++) {
+    let x = parts[i * 3], y = parts[i * 3 + 1];
+    const c = Math.floor(y) * nx + Math.floor(x);
+    if (!(x >= 0 && x < nx && y >= 0 && y < ny) || type[c] !== 0 || (parts[i * 3 + 2] -= 1) <= 0) { respawn(i); continue; }
+    x += ux[c] * steps; y += uy[c] * steps;
+    if (!(x >= 0 && x < nx && y >= 0 && y < ny)) { respawn(i); continue; }
+    parts[i * 3] = x; parts[i * 3 + 1] = y;
+  }
+}
+
+// ---------- rendu ----------
+let range = null;
+function fieldValue(k, i) {
+  const s = solver;
+  if (k === 'T') return s.T[i];
+  if (k === 'u') return Math.hypot(s.ux[i], s.uy[i]) * s.cu;
+  if (k === 'p') return (s.rho[i] - 1) / 3 * s.ps;
+  return 0;
+}
+function computeField(k) {
+  const s = solver, N = s.N, nx = s.nx, ny = s.ny;
+  const out = new Float32Array(N);
+  if (k === 'w') {
+    const sc = s.cu / s.dx;
+    for (let j = 1; j < ny - 1; j++) for (let i = 1; i < nx - 1; i++) {
+      const c = j * nx + i;
+      out[c] = ((s.uy[c + 1] - s.uy[c - 1]) - (s.ux[c + nx] - s.ux[c - nx])) * 0.5 * sc;
+    }
+  } else for (let i = 0; i < N; i++) out[i] = fieldValue(k, i);
+  if (k === 'p') {
+    const open = Object.values(cfg.sides).includes('ouvert');
+    if (!open) { let m = 0, n = 0; for (let i = 0; i < N; i++) if (s.type[i] === 0) { m += out[i]; n++; } m /= n || 1; for (let i = 0; i < N; i++) out[i] -= m; }
+  }
+  return out;
+}
+function draw() {
+  if (!solver) return;
+  const s = solver, nx = s.nx, ny = s.ny, N = s.N;
+  const val = computeField(field);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < N; i++) if (s.type[i] === 0) { const v = val[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  if (field === 'p' || field === 'w') { const m = Math.max(Math.abs(lo), Math.abs(hi), 1e-6); lo = -m; hi = m; }
+  if (field === 'T') { lo = Math.min(lo, cfg.Tamb - 0.5); hi = Math.max(hi, cfg.Tamb + 0.5); }
+  if (field === 'u') { lo = 0; hi = Math.max(hi, 0.01); }
+  if (!range || range.k !== field) range = { k: field, lo, hi };
+  else { range.lo += (lo - range.lo) * 0.15; range.hi += (hi - range.hi) * 0.15; }
+  const L = LUTS[field], d = img.data, a = range.lo, b = range.hi, inv = 255 / Math.max(1e-9, b - a);
+  // température : blanc = ambiante, échelles séparées côté froid et côté chaud
+  const isT = field === 'T', Ta = cfg.Tamb, invC = 127.5 / Math.max(1e-6, Ta - a), invH = 127.5 / Math.max(1e-6, b - Ta);
+  for (let j = 0; j < ny; j++) {
+    const row = (ny - 1 - j) * nx;
+    for (let i = 0; i < nx; i++) {
+      const c = j * nx + i, p = (row + i) * 4;
+      if (s.type[c] !== 0) { d[p] = 112; d[p + 1] = 120; d[p + 2] = 131; d[p + 3] = 255; continue; }
+      const v = val[c];
+      let t = isT ? Math.round(v < Ta ? (v - a) * invC : 127.5 + (v - Ta) * invH) : Math.round((v - a) * inv);
+      t = t < 0 ? 0 : t > 255 ? 255 : t;
+      d[p] = L[t * 3]; d[p + 1] = L[t * 3 + 1]; d[p + 2] = L[t * 3 + 2]; d[p + 3] = 255;
+    }
+  }
+  octx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(off, 0, 0, cv.width, cv.height);
+  const k = cv.width / nx;
+  // particules
+  if ($('optParticles').checked) {
+    ctx.fillStyle = field === 'T' ? 'rgba(20,20,25,0.55)' : 'rgba(255,255,255,0.7)';
+    const r = Math.max(1, k * 0.35);
+    const n = parts.length / 3;
+    for (let i = 0; i < n; i++) ctx.fillRect(parts[i * 3] * k - r / 2, cv.height - parts[i * 3 + 1] * k - r / 2, r, r);
+  }
+  // vecteurs
+  if ($('optVectors').checked) {
+    const st = Math.max(4, Math.round(nx / 34));
+    let um = 1e-6; for (let i = 0; i < N; i++) um = Math.max(um, Math.hypot(s.ux[i], s.uy[i]));
+    const sc = st * k * 0.9 / um;
+    ctx.strokeStyle = 'rgba(15,15,20,0.75)'; ctx.lineWidth = Math.max(1, k * 0.2);
+    ctx.beginPath();
+    for (let j = st >> 1; j < ny; j += st) for (let i = st >> 1; i < nx; i += st) {
+      const c = j * nx + i; if (s.type[c] !== 0) continue;
+      const x0 = (i + 0.5) * k, y0 = cv.height - (j + 0.5) * k;
+      const dx = s.ux[c] * sc, dy = -s.uy[c] * sc;
+      const L2 = Math.hypot(dx, dy); if (L2 < 1) continue;
+      const x1 = x0 + dx, y1 = y0 + dy, ax = dx / L2, ay = dy / L2, h = Math.min(6, L2 * 0.35);
+      ctx.moveTo(x0, y0); ctx.lineTo(x1, y1);
+      ctx.moveTo(x1, y1); ctx.lineTo(x1 - h * (ax - ay * 0.5), y1 - h * (ay + ax * 0.5));
+      ctx.moveTo(x1, y1); ctx.lineTo(x1 - h * (ax + ay * 0.5), y1 - h * (ay - ax * 0.5));
+    }
+    ctx.stroke();
+  }
+  drawComponents();
+  drawLegend();
+}
+function drawComponents() {
+  const dpr = cv.width / wrap.clientWidth;
+  for (const c of comps) {
+    const [x0, y1] = toPx(c.x, c.y), [x1, y0] = toPx(c.x + c.w, c.y + c.h);
+    const w = x1 - x0, h = y1 - y0;
+    const sel = selected === c.id;
+    ctx.save();
+    ctx.lineWidth = (sel ? 2.5 : 1.25) * dpr;
+    if (c.type === 'solid') {
+      ctx.strokeStyle = c.fixedT ? (c.T >= cfg.Tamb ? '#c0392b' : '#2e86c1') : '#3b4350';
+      ctx.strokeRect(x0, y0, w, h);
+    } else if (c.type === 'exchanger') {
+      const hot = c.mode === 'T' ? c.Tc >= cfg.Tamb : c.P >= 0;
+      ctx.strokeStyle = hot ? '#c0392b' : '#2e86c1';
+      ctx.setLineDash([5 * dpr, 3 * dpr]); ctx.strokeRect(x0, y0, w, h); ctx.setLineDash([]);
+      ctx.globalAlpha = 0.5; ctx.lineWidth = 1 * dpr; ctx.beginPath();
+      const vert = h >= w, n = Math.max(3, Math.round((vert ? h : w) / (7 * dpr)));
+      for (let i = 1; i < n; i++) {
+        if (vert) { const y = y0 + h * i / n; ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
+        else { const x = x0 + w * i / n; ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
+      }
+      ctx.stroke(); ctx.globalAlpha = 1;
+    } else if (c.type === 'fan') {
+      ctx.strokeStyle = '#1f5f8b'; ctx.fillStyle = 'rgba(46,134,193,0.18)';
+      ctx.fillRect(x0, y0, w, h); ctx.strokeRect(x0, y0, w, h);
+      const d = DIRS[c.dir], cx = x0 + w / 2, cy = y0 + h / 2;
+      const L = Math.min(Math.max(w, h) * 0.4, 40 * dpr);
+      const ex = cx + d[0] * L / 2, ey = cy - d[1] * L / 2, sx0 = cx - d[0] * L / 2, sy0 = cy + d[1] * L / 2;
+      ctx.lineWidth = 2.5 * dpr; ctx.strokeStyle = '#ffffff';
+      ctx.beginPath(); ctx.moveTo(sx0, sy0); ctx.lineTo(ex, ey);
+      const hx = d[0], hy = -d[1], hs = 7 * dpr;
+      ctx.moveTo(ex, ey); ctx.lineTo(ex - hs * (hx - hy * 0.6), ey - hs * (hy + hx * 0.6));
+      ctx.moveTo(ex, ey); ctx.lineTo(ex - hs * (hx + hy * 0.6), ey - hs * (hy - hx * 0.6));
+      ctx.stroke();
+    }
+    if (sel) {
+      ctx.strokeStyle = getCss('--accent'); ctx.lineWidth = 2 * dpr; ctx.setLineDash([]);
+      ctx.strokeRect(x0 - 3 * dpr, y0 - 3 * dpr, w + 6 * dpr, h + 6 * dpr);
+      ctx.fillStyle = getCss('--accent');
+      const hs = 9 * dpr; ctx.fillRect(x1 - hs / 2, y1 - hs / 2, hs, hs);
+    }
+    ctx.restore();
+  }
+  if (drag && drag.mode === 'draw') {
+    const r = normRect(drag);
+    const [x0, y1] = toPx(r.x, r.y), [x1, y0] = toPx(r.x + r.w, r.y + r.h);
+    ctx.save(); ctx.strokeStyle = getCss('--accent'); ctx.lineWidth = 2 * dpr; ctx.setLineDash([6 * dpr, 4 * dpr]);
+    ctx.strokeRect(x0, y0, x1 - x0, y1 - y0); ctx.restore();
+  }
+}
+const cssCache = {};
+function getCss(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim() || '#b4531f'; }
+function drawLegend() {
+  const lc = $('legend'), g = lc.getContext('2d'), L = LUTS[field];
+  for (let i = 0; i < 220; i++) { const t = Math.round(i / 219 * 255); g.fillStyle = `rgb(${L[t * 3]},${L[t * 3 + 1]},${L[t * 3 + 2]})`; g.fillRect(i, 0, 1, 10); }
+  $('legMin').textContent = fmt(range.lo, field); $('legMax').textContent = fmt(range.hi, field);
+  $('legUnit').textContent = { T: `Température (°C), blanc = ambiante ${nf(cfg.Tamb, 1)} °C`, u: 'Vitesse (m/s)', p: 'Pression relative (Pa)', w: 'Vorticité (1/s)' }[field];
+}
+function fmt(v, k) {
+  const a = Math.abs(v);
+  if (k === 'T') return v.toFixed(1);
+  return a >= 100 ? v.toFixed(0) : a >= 10 ? v.toFixed(1) : a >= 1 ? v.toFixed(2) : v.toFixed(3);
+}
+const nf = (v, d = 0) => v.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// ---------- boucle ----------
+let lastUi = 0, frame = 0, stepAcc = 0, stepT0 = performance.now();
+function loop() {
+  if (running && !building && solver) {
+    if (engine === 'gpu') {
+      if (!solver.busy) {
+        const n = batch, t0 = performance.now(), sv = solver;
+        sv.runAsync(n).then((ok) => {
+          if (sv !== solver) return;
+          if (!ok) { if (sv.lost) { gpuErr = 'Le GPU a été perdu ; passage au processeur.'; engineChoice = 'cpu'; rebuild(); } return; }
+          const el = performance.now() - t0;
+          stepAcc += n;
+          if ($('optParticles').checked) advectParticles(n);
+          sampleHistory();
+          batch = Math.max(10, Math.min(4000, Math.round(batch * Math.min(1.5, Math.max(0.6, 30 / Math.max(1, el))))));
+        });
+      }
+    } else {
+      const t0 = performance.now();
+      let n = 0;
+      while (performance.now() - t0 < 22) { solver.run(2); n += 2; }
+      stepAcc += n;
+      if ($('optParticles').checked) advectParticles(n);
+      sampleHistory();
+    }
+  }
+  const now = performance.now();
+  if (now - stepT0 > 1000) { stepsPerSec = stepAcc * 1000 / (now - stepT0); stepAcc = 0; stepT0 = now; }
+  if (!building) draw();
+  if (!building && now - lastUi > 250) { updateResults(); updateStatus(); lastUi = now; }
+  requestAnimationFrame(loop);
+}
+let lastSample = 0;
+function sampleHistory() {
+  if (solver.step - lastSample < 100) return;
+  lastSample = solver.step;
+  for (const f of solver.fans) push(f.comp.id, solver.fanReport(f).Q);
+  for (const e of solver.exch) push(e.comp.id, e.P);
+}
+function push(id, v) { const h = history[id] || (history[id] = []); h.push(v); if (h.length > 300) h.shift(); }
+function settled(id) {
+  const h = history[id]; if (!h || h.length < 40) return null;
+  const a = h[h.length - 1], b = h[h.length - 31];
+  let m = 0; for (let i = h.length - 30; i < h.length; i++) m = Math.max(m, Math.abs(h[i] - a));
+  return m <= Math.max(0.02 * Math.abs(a), 1e-3) && Math.abs(a - b) <= Math.max(0.02 * Math.abs(a), 1e-3);
+}
+
+// ---------- panneaux ----------
+function updateStatus() {
+  const s = solver;
+  const t = s.simTime();
+  const ratio = stepsPerSec * s.dt;
+  const eng = engine === 'gpu' ? '<span class="pill good">GPU · WebGPU</span>' : `<span class="pill warn" title="${esc(gpuErr)}">Processeur</span>`;
+  $('status').innerHTML = eng + `<span>t = ${nf(t, 2)} s</span><span>${nf(stepsPerSec)} pas/s</span><span>×${ratio >= 0.1 ? nf(ratio, 2) : nf(ratio, 3)} temps réel</span><span>grille ${s.nx}×${s.ny}</span>` + (running ? '' : '<span class="pill warn">en pause</span>');
+}
+function updateResults() {
+  const s = solver, box = $('results');
+  let html = '';
+  const warns = [];
+  for (const f of s.fans) {
+    const r = s.fanReport(f), c = f.comp, st = settled(c.id);
+    if (s.fanTargetLat(f) > 0.16) warns.push(`Le débit de « ${esc(c.name)} » est élevé pour le pas de temps actuel : cliquez sur Réinitialiser pour adapter le calcul.`);
+    if (Math.abs(f.F) >= 0.0199) warns.push(`« ${esc(c.name)} » est en butée : le circuit est trop résistant pour atteindre ${nf(c.Q)} m³/h.`);
+    html += `<div class="res"><h3>${esc(c.name)} ${st === true ? '<span class="pill good">stabilisé</span>' : st === false ? '<span class="pill warn">en évolution</span>' : ''}</h3>
+      <div class="big">${nf(r.Q)} m³/h</div>
+      <div class="sub">consigne ${nf(c.Q)} m³/h · Δp ventilateur ${nf(r.dp, 1)} Pa</div>
+      <canvas data-spark="${c.id}" width="300" height="40"></canvas></div>`;
+  }
+  for (const e of s.exch) {
+    const c = e.comp, st = settled(c.id);
+    const kw = e.P / 1000;
+    html += `<div class="res"><h3>${esc(c.name)} ${st === true ? '<span class="pill good">stabilisé</span>' : st === false ? '<span class="pill warn">en évolution</span>' : ''}</h3>
+      <div class="big">${kw >= 0 ? '+' : '−'}${nf(Math.abs(kw), 2)} kW</div>
+      <div class="sub">${kw >= 0 ? "chauffe l'air" : "refroidit l'air"} · T moyenne dans la batterie ${nf(e.Tm, 1)} °C</div>
+      <canvas data-spark="${c.id}" width="300" height="40"></canvas></div>`;
+  }
+  let umax = 0, Tmin = Infinity, Tmax = -Infinity;
+  for (let i = 0; i < s.N; i++) if (s.type[i] === 0) { umax = Math.max(umax, Math.hypot(s.ux[i], s.uy[i])); Tmin = Math.min(Tmin, s.T[i]); Tmax = Math.max(Tmax, s.T[i]); }
+  if (umax > 0.25) warns.push('Des vitesses très élevées apparaissent : le calcul peut devenir instable. Réduisez les débits ou augmentez la résolution, puis réinitialisez.');
+  html += `<div class="res"><h3>Domaine</h3><dl class="kv">
+    <dt>Vitesse max.</dt><dd>${nf(umax * s.cu, 2)} m/s</dd>
+    <dt>T min / max</dt><dd>${nf(Tmin, 1)} / ${nf(Tmax, 1)} °C</dd>
+    <dt>Temps simulé</dt><dd>${nf(s.simTime(), 2)} s</dd></dl>
+    <p class="note">Puissances et débits sont donnés pour la profondeur de ${nf(cfg.depth, 2)} m.</p></div>`;
+  if (!s.fans.length && !s.exch.length) html = `<p class="note">Ajoutez un ventilateur ou un échangeur pour voir son bilan ici.</p>` + html;
+  box.innerHTML = html;
+  box.querySelectorAll('canvas[data-spark]').forEach(drawSpark);
+  const w = $('warn'); w.style.display = warns.length ? 'block' : 'none'; w.innerHTML = warns.join('<br>');
+}
+function drawSpark(c) {
+  const h = history[c.dataset.spark] || [], g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
+  if (h.length < 2) return;
+  let lo = Math.min(...h), hi = Math.max(...h); if (hi - lo < 1e-6) { hi += 1; lo -= 1; }
+  const pad = 4, W = c.width, H = c.height;
+  g.strokeStyle = getCss('--line'); g.lineWidth = 1; g.beginPath(); g.moveTo(0, H - 0.5); g.lineTo(W, H - 0.5); g.stroke();
+  g.strokeStyle = getCss('--accent'); g.lineWidth = 1.5; g.beginPath();
+  h.forEach((v, i) => { const x = i / (h.length - 1) * (W - pad); const y = H - pad - (v - lo) / (hi - lo) * (H - 2 * pad); i ? g.lineTo(x, y) : g.moveTo(x, y); });
+  g.stroke();
+}
+const esc = (t) => String(t).replace(/[&<>"]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[m]);
+
+function renderLists() {
+  const list = $('complist');
+  const color = (c) => c.type === 'fan' ? '#2e86c1' : c.type === 'exchanger' ? '#c0392b' : '#7c8591';
+  list.innerHTML = comps.length ? comps.map(c => `<div class="compitem" tabindex="0" data-id="${c.id}" aria-current="${selected === c.id}"><i style="background:${color(c)}"></i><span>${esc(c.name)}</span><span style="margin-left:auto;color:var(--muted);font-size:12px">${TYPE_LABEL[c.type]}</span></div>`).join('')
+    : '<p class="note">Aucun composant. Choisissez un outil et tracez un rectangle sur le domaine.</p>';
+  list.querySelectorAll('.compitem').forEach(el => {
+    const pick = () => { select(+el.dataset.id); };
+    el.addEventListener('click', pick);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+  });
+  renderProps();
+}
+function select(id) { selected = id; renderLists(); showTab('comp'); }
+
+function num(id, label, val, step, unit) {
+  return `<div class="row"><label for="${id}">${label}${unit ? ' (' + unit + ')' : ''}</label><input id="${id}" type="number" step="${step}" value="${val}"></div>`;
+}
+function renderProps() {
+  const box = $('props');
+  const c = comps.find(c => c.id === selected);
+  if (!c) { box.innerHTML = '<p class="note">Sélectionnez un composant pour régler ses paramètres. Avec l\'outil Sélection, faites glisser un composant pour le déplacer, ou sa poignée pour le redimensionner.</p>'; return; }
+  const r3 = (v) => +v.toFixed(3);
+  let h = `<h3>${TYPE_LABEL[c.type]}</h3><div class="grid2">
+    <div class="row" style="grid-column:1/-1"><label for="fName">Nom</label><input id="fName" type="text" value="${esc(c.name)}" style="font-family:var(--font-body)"></div>
+    ${num('fX', 'x', r3(c.x), 0.01, 'm')}${num('fY', 'y', r3(c.y), 0.01, 'm')}
+    ${num('fW', 'Largeur', r3(c.w), 0.01, 'm')}${num('fH', 'Hauteur', r3(c.h), 0.01, 'm')}</div>`;
+  if (c.type === 'solid') {
+    h += `<div class="block"><label class="check"><input type="checkbox" id="fFixed" ${c.fixedT ? 'checked' : ''}> Température imposée</label>
+      <div class="grid2" style="margin-top:8px">${num('fT', 'Température', c.T, 1, '°C')}</div>
+      <p class="note">Sans température imposée, la paroi est adiabatique.</p></div>`;
+  } else if (c.type === 'exchanger') {
+    h += `<div class="block"><h3>Échange thermique</h3><div class="grid2">
+      <div class="row" style="grid-column:1/-1"><label for="fMode">Mode</label><select id="fMode"><option value="T" ${c.mode === 'T' ? 'selected' : ''}>Température de batterie imposée</option><option value="P" ${c.mode === 'P' ? 'selected' : ''}>Puissance imposée</option></select></div>
+      ${c.mode === 'T' ? num('fTc', 'T batterie', c.Tc, 1, '°C') + num('fHa', 'h·a', c.ha, 1000, 'W/m³K') : num('fP', 'Puissance (+ chauffe, − refroidit)', c.P, 100, 'W')}
+      </div><p class="note">${c.mode === 'T' ? 'L\'air tend vers la température de batterie, d\'autant plus vite que h·a (coefficient d\'échange × surface d\'ailettes par m³) est grand.' : 'La puissance est répartie uniformément dans la batterie, pour la profondeur du domaine.'}</p></div>
+      <div class="block"><h3>Perte de charge</h3><div class="grid2">${num('fDp', 'Δp nominale', c.dp, 5, 'Pa')}${num('fV', 'à la vitesse', c.vnom, 0.1, 'm/s')}</div>
+      <p class="note">Zone poreuse : Δp ∝ v², calée sur ce point de fonctionnement.</p></div>`;
+  } else if (c.type === 'fan') {
+    h += `<div class="block"><h3>Débit imposé</h3><div class="grid2">${num('fQ', 'Débit', c.Q, 50, 'm³/h')}
+      <div class="row"><label for="fDir">Sens</label><select id="fDir">${Object.keys(DIRS).map(d => `<option value="${d}" ${c.dir === d ? 'selected' : ''}>${d}</option>`).join('')}</select></div></div>
+      <p class="note">Une force asservie (régulateur intégral) pousse l'air jusqu'au débit visé ; le Δp fourni par le ventilateur est affiché dans les résultats.</p></div>`;
+  }
+  h += `<div style="display:flex;gap:8px;margin-top:14px"><button class="btn small" id="fDup" type="button">Dupliquer</button><button class="btn small danger" id="fDel" type="button">Supprimer</button></div>`;
+  box.innerHTML = h;
+  const bind = (id, key, conv = parseFloat) => { const el = $(id); if (!el) return; el.addEventListener('change', () => { const v = conv(el.value); if (typeof v === 'number' && !isFinite(v)) return; c[key] = v; if (['x', 'y', 'w', 'h'].includes(key)) clampComp(c); componentsChanged(); }); };
+  bind('fName', 'name', String); bind('fX', 'x'); bind('fY', 'y'); bind('fW', 'w'); bind('fH', 'h');
+  bind('fT', 'T'); bind('fTc', 'Tc'); bind('fHa', 'ha'); bind('fP', 'P'); bind('fDp', 'dp'); bind('fV', 'vnom'); bind('fQ', 'Q'); bind('fDir', 'dir', String); bind('fMode', 'mode', String);
+  const fx = $('fFixed'); if (fx) fx.addEventListener('change', () => { c.fixedT = fx.checked; componentsChanged(); });
+  $('fDel').addEventListener('click', () => { comps = comps.filter(o => o.id !== c.id); selected = null; delete history[c.id]; componentsChanged(); });
+  $('fDup').addEventListener('click', () => { const n = { ...c, id: nextId++, name: c.name + ' (copie)', x: c.x + c.w + 0.02 }; clampComp(n); comps.push(n); selected = n.id; componentsChanged(); });
+}
+function clampComp(c) {
+  const m = solver.dx;
+  c.w = Math.max(m, Math.min(c.w, cfg.L)); c.h = Math.max(m, Math.min(c.h, cfg.H));
+  c.x = Math.max(0, Math.min(c.x, cfg.L - c.w)); c.y = Math.max(0, Math.min(c.y, cfg.H - c.h));
+}
+
+// ---------- interaction canevas ----------
+let drag = null;
+function hit(x, y) {
+  for (let i = comps.length - 1; i >= 0; i--) { const c = comps[i]; if (x >= c.x && x <= c.x + c.w && y >= c.y && y <= c.y + c.h) return c; }
+  return null;
+}
+function onHandle(c, ev) {
+  const [px, py] = toPx(c.x + c.w, c.y);
+  const r = cv.getBoundingClientRect(), k = cv.width / r.width;
+  const mx = (ev.clientX - r.left) * k, my = (ev.clientY - r.top) * k;
+  return Math.abs(mx - px) < 14 * k && Math.abs(my - py) < 14 * k;
+}
+const normRect = (d) => ({ x: Math.min(d.x0, d.x1), y: Math.min(d.y0, d.y1), w: Math.abs(d.x1 - d.x0), h: Math.abs(d.y1 - d.y0) });
+cv.addEventListener('pointerdown', (ev) => {
+  const [x, y] = toPhys(ev);
+  cv.setPointerCapture(ev.pointerId);
+  if (tool === 'probe') { probe(ev); drag = { mode: 'probe' }; return; }
+  if (tool === 'select') {
+    const sel = comps.find(c => c.id === selected);
+    if (sel && onHandle(sel, ev)) { drag = { mode: 'resize', c: sel, ox: sel.x, oy: sel.y + sel.h }; return; }
+    const c = hit(x, y);
+    if (c) { if (selected !== c.id) select(c.id); drag = { mode: 'move', c, dx: x - c.x, dy: y - c.y }; }
+    else { selected = null; renderLists(); }
+    return;
+  }
+  drag = { mode: 'draw', x0: x, y0: y, x1: x, y1: y };
+});
+cv.addEventListener('pointermove', (ev) => {
+  const [x, y] = toPhys(ev);
+  if (!drag) { if (ev.pointerType === 'mouse') probe(ev, true); return; }
+  if (drag.mode === 'probe') probe(ev);
+  else if (drag.mode === 'draw') { drag.x1 = Math.max(0, Math.min(cfg.L, x)); drag.y1 = Math.max(0, Math.min(cfg.H, y)); }
+  else if (drag.mode === 'move') { drag.c.x = x - drag.dx; drag.c.y = y - drag.dy; clampComp(drag.c); drag.moved = true; }
+  else if (drag.mode === 'resize') { const c = drag.c; c.w = Math.max(solver.dx, x - drag.ox); const top = drag.oy; c.y = Math.min(y, top - solver.dx); c.h = top - c.y; clampComp(c); drag.moved = true; }
+  if (!running) draw();
+});
+function endDrag() {
+  if (!drag) return;
+  if (drag.mode === 'draw') {
+    const r = normRect(drag);
+    if (r.w > 2 * solver.dx && r.h > solver.dx) {
+      const c = { id: nextId++, type: tool, ...JSON.parse(JSON.stringify(DEF[tool])), ...r };
+      if (tool === 'fan') { const v = cfg.fluid === 'eau' ? 0.05 : 1.5; c.Q = Math.max(1, Math.round(v * c.h * cfg.depth * 3600 / 10) * 10); }
+      const same = comps.filter(o => o.type === tool).length;
+      if (same) c.name += ' ' + (same + 1);
+      clampComp(c); comps.push(c); selected = c.id;
+      setTool('select');
+      componentsChanged();
+    }
+  } else if ((drag.mode === 'move' || drag.mode === 'resize') && drag.moved) componentsChanged();
+  drag = null;
+}
+cv.addEventListener('pointerup', endDrag);
+cv.addEventListener('pointercancel', endDrag);
+cv.addEventListener('pointerleave', () => { if (!drag) $('readout').textContent = ''; });
+function probe(ev, hover) {
+  const [x, y] = toPhys(ev);
+  const s = solver, i = Math.floor(x / s.dx), j = Math.floor(y / s.dx);
+  if (i < 0 || j < 0 || i >= s.nx || j >= s.ny) return;
+  const c = j * s.nx + i;
+  if (s.type[c] !== 0) { $('readout').textContent = `x ${nf(x, 2)} m · y ${nf(y, 2)} m · paroi${s.type[c] === 2 ? ' à ' + nf(s.Tw[c], 1) + ' °C' : ''}`; return; }
+  $('readout').textContent = `x ${nf(x, 2)} m · y ${nf(y, 2)} m · T ${nf(s.T[c], 2)} °C · |u| ${nf(Math.hypot(s.ux[c], s.uy[c]) * s.cu, 3)} m/s · p ${nf((s.rho[c] - 1) / 3 * s.ps, 2)} Pa`;
+}
+
+// ---------- commandes ----------
+function setTool(t) {
+  tool = t;
+  document.querySelectorAll('.tool').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === t));
+  cv.style.cursor = t === 'select' ? 'default' : 'crosshair';
+}
+document.querySelectorAll('.tool').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+$('field').addEventListener('change', (e) => { field = e.target.value; range = null; draw(); });
+$('optVectors').addEventListener('change', () => draw());
+$('optParticles').addEventListener('change', () => draw());
+$('run').addEventListener('click', () => { running = !running; $('run').textContent = running ? 'Pause' : 'Reprendre'; });
+$('reset').addEventListener('click', () => { rebuild(); });
+$('pEngine').addEventListener('change', (e) => { engineChoice = e.target.value; });
+$('preset').addEventListener('change', (e) => { load(e.target.value); });
+function showTab(name) {
+  document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === name));
+  document.querySelectorAll('.tabpanel').forEach(p => p.classList.toggle('on', p.id === 'tab-' + name));
+}
+document.querySelectorAll('.tabs button').forEach(b => b.addEventListener('click', () => showTab(b.dataset.tab)));
+
+function syncParamForm() {
+  $('pFluid').value = cfg.fluid; $('pTamb').value = cfg.Tamb; $('pL').value = cfg.L; $('pH').value = cfg.H;
+  $('pDepth').value = cfg.depth;
+  if (![...$('pNx').options].some(o => o.value === String(cfg.nx))) { const o = document.createElement('option'); o.value = cfg.nx; o.textContent = cfg.nx + ' cellules'; $('pNx').appendChild(o); }
+  $('pNx').value = String(cfg.nx); $('pEngine').value = engineChoice; $('pGrav').checked = cfg.gravity;
+  $('sGauche').value = cfg.sides.gauche; $('sDroite').value = cfg.sides.droite; $('sHaut').value = cfg.sides.haut; $('sBas').value = cfg.sides.bas;
+}
+$('applyParams').addEventListener('click', async () => {
+  const g = (id) => parseFloat($(id).value);
+  cfg.fluid = $('pFluid').value; cfg.Tamb = isFinite(g('pTamb')) ? g('pTamb') : cfg.Tamb;
+  cfg.L = Math.max(0.05, g('pL') || cfg.L); cfg.H = Math.max(0.05, g('pH') || cfg.H); cfg.depth = Math.max(0.01, g('pDepth') || cfg.depth);
+  cfg.nx = parseInt($('pNx').value, 10); cfg.gravity = $('pGrav').checked;
+  cfg.sides = { gauche: $('sGauche').value, droite: $('sDroite').value, haut: $('sHaut').value, bas: $('sBas').value };
+  await rebuild();
+  comps.forEach(clampComp); componentsChanged();
+  syncParamForm();
+});
+function updateNumInfo() {
+  const s = solver, fl = s.fl;
+  $('numinfo').innerHTML = `<dt>Maille</dt><dd>${nf(s.dx * 1000, 1)} mm</dd>
+    <dt>Pas de temps</dt><dd>${nf(s.dt * 1000, 3)} ms</dd>
+    <dt>Vitesse de référence</dt><dd>${nf(s.Uref, 2)} m/s</dd>
+    <dt>Viscosité physique</dt><dd>${fl.nu.toExponential(2)} m²/s</dd>
+    <dt>Viscosité de base du calcul</dt><dd>${s.nuEff.toExponential(2)} m²/s</dd>
+    <dt>Moteur</dt><dd>${engine === 'gpu' ? 'GPU (WebGPU)' : 'Processeur'}</dd>
+    <dt>Écoulement</dt><dd>MRT D2Q9 + LES</dd>
+    <dt>Thermique</dt><dd>D2Q5, Péclet de maille ≤ 6</dd>`;
+}
+
+setTool('select');
+load('pac').then(() => { updateStatus(); updateResults(); requestAnimationFrame(loop); });
+})();
+</script>
+</body>
+</html>

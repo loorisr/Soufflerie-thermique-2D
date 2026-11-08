@@ -1,0 +1,22 @@
+<!DOCTYPE html><html><body><script src="../solver.js"></script><script src="../gpu.js"></script><script>
+window.runCmp = async (name, steps) => {
+  const cases = {
+   pac: { cfg: { fluid: 'air', L: 2.0, H: 1.0, nx: 160, Tamb: 7, gravity: true, depth: 0.5, sides: { gauche: 'ouvert', droite: 'ouvert', bas: 'paroi', haut: 'ouvert' } },
+    comps: [ { id:1,type: 'solid', x: 0.6, y: 0.12, w: 0.8, h: 0.03, fixedT: false, T: 20 },{ id:2,type: 'solid', x: 0.6, y: 0.75, w: 0.8, h: 0.03, fixedT: false, T: 20 },
+      { id:3,type: 'exchanger', x: 0.62, y: 0.15, w: 0.05, h: 0.6, mode: 'T', Tc: -3, ha: 30000, P: -3000, dp: 40, vnom: 2 },{ id:4,type: 'fan', x: 1.3, y: 0.15, w: 0.06, h: 0.6, dir: 'droite', Q: 1800 } ] },
+   piece: { cfg: { fluid: 'air', L: 4.0, H: 2.6, nx: 120, Tamb: 16, gravity: true, depth: 1, sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [ { id:1,type: 'solid', x: 0.12, y: 0.15, w: 0.08, h: 0.6, fixedT: true, T: 55 },{ id:2,type: 'solid', x: 3.94, y: 0.9, w: 0.06, h: 1.3, fixedT: true, T: 5 } ] } };
+  const c = cases[name];
+  const cpu = new Solver(JSON.parse(JSON.stringify(c.cfg)), c.comps);
+  const gpu = await GpuSolver.create(JSON.parse(JSON.stringify(c.cfg)), c.comps);
+  const info = gpu.shaderInfo ? (await gpu.shaderInfo).messages.map(m=>m.type+': '+m.message+' @'+m.lineNum) : [];
+  let t0=performance.now(); cpu.run(steps); const tc=performance.now()-t0;
+  t0=performance.now(); for (let s=0;s<steps;s+=100) await gpu.runAsync(100); const tg=performance.now()-t0;
+  let du=0, dT=0, umax=0;
+  for (let i=0;i<cpu.N;i++){ if(cpu.type[i]) continue; du=Math.max(du,Math.hypot(cpu.ux[i]-gpu.ux[i],cpu.uy[i]-gpu.uy[i])); dT=Math.max(dT,Math.abs(cpu.T[i]-gpu.T[i])); umax=Math.max(umax,Math.hypot(cpu.ux[i],cpu.uy[i])); }
+  const r = { info, tc, tg, du, umax, dT };
+  if (cpu.fans.length) { r.cpuQ = cpu.fanReport(cpu.fans[0]); r.gpuQ = gpu.fanReport(gpu.fans[0]); }
+  if (cpu.exch.length) { r.cpuP = cpu.exch[0].P; r.gpuP = gpu.exch[0].P; r.cpuTm=cpu.exch[0].Tm; r.gpuTm=gpu.exch[0].Tm; }
+  return r;
+};
+</script></body></html>
