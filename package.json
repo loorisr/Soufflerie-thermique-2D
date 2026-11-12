@@ -1,0 +1,14 @@
+{
+  "name": "soufflerie-thermique-2d",
+  "private": true,
+  "description": "Simulateur CFD 2D didactique (LBM thermique) dans le navigateur",
+  "license": "MIT",
+  "main": "solver.js",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "build": "python3 build.py",
+    "test": "node tests/test.js && node tests/test2.js && node tests/test3.js",
+    "test:presets": "node tests/presets.js",
+    "serve": "python3 -m http.server 8765"
+  }
+}

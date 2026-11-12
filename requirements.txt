@@ -1,0 +1,2 @@
+# Uniquement pour la comparaison GPU/processeur (tests/cmp.py)
+playwright==1.65.1

@@ -114,6 +114,20 @@ h3 { font-size: 14px; margin: 0 0 8px; font-weight: 600; }
         <option value="piece">Radiateur dans une pièce</option>
         <option value="conduit">Conduit avec batterie chaude</option>
         <option value="eau">Panache thermique dans l'eau</option>
+        <option value="rb">Cellules de Rayleigh-Bénard</option>
+        <option value="karman">Allée de Kármán derrière un tube chauffé</option>
+        <option value="baie">Baie de serveurs et climatiseur</option>
+        <option value="cheminee">Cheminée solaire</option>
+        <option value="cavite">Cavité différentiellement chauffée</option>
+        <option value="convecteur">Convecteur sous une fenêtre</option>
+        <option value="ailettes">Dissipateur à ailettes</option>
+        <option value="plancher">Plancher chauffant contre radiateur</option>
+        <option value="rideau">Rideau d'air de porte</option>
+        <option value="tubes">Faisceau de tubes en quinconce</option>
+        <option value="lac">Lac en hiver (eau à 4 °C)</option>
+        <option value="canyon">Rue canyon et façade ensoleillée</option>
+        <option value="ballon">Ballon d'eau chaude stratifié</option>
+        <option value="bassin">Bassin chauffé, à moitié couvert</option>
       </select>
       <button class="btn primary" id="run" type="button">Démarrer</button>
       <button class="btn" id="reset" type="button">Réinitialiser</button>
@@ -164,7 +178,7 @@ h3 { font-size: 14px; margin: 0 0 8px; font-weight: 600; }
       <div class="tabpanel" id="tab-param">
         <h2>Domaine et fluide</h2>
         <div class="grid2">
-          <div class="row"><label for="pFluid">Fluide</label><select id="pFluid"><option value="air">Air</option><option value="eau">Eau</option></select></div>
+          <div class="row"><label for="pFluid">Fluide</label><select id="pFluid"><option value="air">Air</option><option value="eau">Eau</option><option value="eau4">Eau froide (max de densité à 4 °C)</option></select></div>
           <div class="row"><label for="pTamb">T ambiante (°C)</label><input id="pTamb" type="number" step="1"></div>
           <div class="row"><label for="pL">Largeur (m)</label><input id="pL" type="number" step="0.1" min="0.1"></div>
           <div class="row"><label for="pH">Hauteur (m)</label><input id="pH" type="number" step="0.1" min="0.1"></div>
@@ -234,6 +248,142 @@ const PRESETS = {
     comps: [
       { type: 'solid', name: 'Résistance', x: 0.27, y: 0.02, w: 0.06, h: 0.025, fixedT: true, T: 40 },
       { type: 'solid', name: 'Paroi froide', x: 0.57, y: 0.15, w: 0.03, h: 0.25, fixedT: true, T: 8 },
+    ] },
+  rb: {
+    cfg: { fluid: 'air', L: 1.0, H: 0.25, nx: 320, Tamb: 20, gravity: true, depth: 0.2,
+      sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'solid', name: 'Plaque chaude', x: 0.0, y: 0.0, w: 1.0, h: 0.015, fixedT: true, T: 35 },
+      { type: 'solid', name: 'Plaque froide', x: 0.0, y: 0.235, w: 1.0, h: 0.015, fixedT: true, T: 5 },
+      { type: 'solid', name: 'Défaut (amorce)', x: 0.37, y: 0.015, w: 0.02, h: 0.01, fixedT: true, T: 35 },
+    ] },
+  karman: {
+    cfg: { fluid: 'air', L: 3.0, H: 0.6, nx: 320, Tamb: 15, gravity: false, depth: 0.2,
+      sides: { gauche: 'ouvert', droite: 'ouvert', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'fan', name: 'Ventilateur', x: 0.2, y: 0.0, w: 0.08, h: 0.6, dir: 'droite', Q: 400 },
+      { type: 'solid', name: 'Tube chauffé', x: 0.75, y: 0.25, w: 0.1, h: 0.1, fixedT: true, T: 60 },
+    ] },
+  baie: {
+    cfg: { fluid: 'air', L: 4.0, H: 2.6, nx: 240, Tamb: 24, gravity: true, depth: 1,
+      sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'solid', name: 'Baie (bâti)', x: 1.2, y: 0.0, w: 0.04, h: 2.0, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Baie (bâti)', x: 2.16, y: 0.0, w: 0.04, h: 2.0, fixedT: false, T: 20 },
+      { type: 'fan', name: 'Ventilateurs serveurs', x: 1.24, y: 0.1, w: 0.06, h: 1.8, dir: 'droite', Q: 900 },
+      { type: 'exchanger', name: 'Serveurs', x: 1.5, y: 0.1, w: 0.4, h: 1.8, mode: 'P', Tc: 50, ha: 30000, P: 3000, dp: 15, vnom: 1 },
+      { type: 'exchanger', name: 'Batterie froide', x: 3.7, y: 1.2, w: 0.25, h: 0.06, mode: 'T', Tc: 12, ha: 30000, P: -4000, dp: 40, vnom: 2 },
+      { type: 'fan', name: 'Soufflage climatiseur', x: 3.7, y: 0.9, w: 0.25, h: 0.08, dir: 'bas', Q: 2000 },
+      { type: 'solid', name: 'Caisson climatiseur', x: 3.65, y: 0.3, w: 0.05, h: 1.4, fixedT: false, T: 20 },
+    ] },
+  cheminee: {
+    cfg: { fluid: 'air', L: 1.2, H: 2.4, nx: 160, Tamb: 20, gravity: true, depth: 1,
+      sides: { gauche: 'paroi', droite: 'ouvert', bas: 'paroi', haut: 'ouvert' } },
+    comps: [
+      { type: 'solid', name: 'Mur absorbeur', x: 0.0, y: 0.0, w: 0.3, h: 2.4, fixedT: true, T: 55 },
+      { type: 'solid', name: 'Vitrage', x: 0.5, y: 0.3, w: 0.02, h: 2.1, fixedT: false, T: 20 },
+    ] },
+  cavite: {
+    cfg: { fluid: 'air', L: 0.5, H: 0.5, nx: 240, Tamb: 20, gravity: true, depth: 0.5,
+      sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'solid', name: 'Paroi chaude', x: 0.0, y: 0.0, w: 0.01, h: 0.5, fixedT: true, T: 30 },
+      { type: 'solid', name: 'Paroi froide', x: 0.49, y: 0.0, w: 0.01, h: 0.5, fixedT: true, T: 10 },
+    ] },
+  convecteur: {
+    cfg: { fluid: 'air', L: 3.0, H: 2.6, nx: 240, Tamb: 18, gravity: true, depth: 1,
+      sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'solid', name: 'Allège', x: 2.9, y: 0.0, w: 0.1, h: 0.9, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Vitrage froid', x: 2.94, y: 0.9, w: 0.06, h: 1.4, fixedT: true, T: 4 },
+      { type: 'solid', name: 'Tableau', x: 2.9, y: 2.3, w: 0.1, h: 0.3, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Convecteur', x: 2.72, y: 0.15, w: 0.12, h: 0.55, fixedT: true, T: 55 },
+      { type: 'solid', name: 'Appui de fenêtre', x: 2.7, y: 0.86, w: 0.2, h: 0.03, fixedT: false, T: 20 },
+    ] },
+  ailettes: {
+    cfg: { fluid: 'air', L: 0.3, H: 0.3, nx: 240, Tamb: 25, gravity: true, depth: 0.1,
+      sides: { gauche: 'ouvert', droite: 'ouvert', bas: 'paroi', haut: 'ouvert' } },
+    comps: [
+      { type: 'solid', name: 'Composant', x: 0.1, y: 0.0, w: 0.1, h: 0.04, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Semelle', x: 0.08, y: 0.04, w: 0.14, h: 0.02, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Ailette', x: 0.0800, y: 0.06, w: 0.004, h: 0.06, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Ailette', x: 0.1072, y: 0.06, w: 0.004, h: 0.06, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Ailette', x: 0.1344, y: 0.06, w: 0.004, h: 0.06, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Ailette', x: 0.1616, y: 0.06, w: 0.004, h: 0.06, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Ailette', x: 0.1888, y: 0.06, w: 0.004, h: 0.06, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Ailette', x: 0.2160, y: 0.06, w: 0.004, h: 0.06, fixedT: true, T: 70 },
+    ] },
+  plancher: {
+    cfg: { fluid: 'air', L: 6.4, H: 2.6, nx: 320, Tamb: 16, gravity: true, depth: 1,
+      sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'solid', name: 'Fenêtre froide (gauche)', x: 0.0, y: 0.9, w: 0.06, h: 1.3, fixedT: true, T: 5 },
+      { type: 'solid', name: 'Plancher chauffant', x: 0.06, y: 0.0, w: 3.04, h: 0.04, fixedT: true, T: 26 },
+      { type: 'solid', name: 'Cloison', x: 3.1, y: 0.0, w: 0.2, h: 2.6, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Radiateur', x: 3.42, y: 0.15, w: 0.08, h: 0.6, fixedT: true, T: 55 },
+      { type: 'solid', name: 'Fenêtre froide (droite)', x: 6.34, y: 0.9, w: 0.06, h: 1.3, fixedT: true, T: 5 },
+    ] },
+  rideau: {
+    cfg: { fluid: 'air', L: 5.0, H: 2.6, nx: 240, Tamb: 20, gravity: true, depth: 1,
+      sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'exchanger', name: 'Air extérieur (−5 °C)', x: 0.0, y: 0.0, w: 1.2, h: 2.6, mode: 'T', Tc: -5, ha: 30000, P: -5000, dp: 1, vnom: 1 },
+      { type: 'solid', name: 'Linteau', x: 2.0, y: 2.1, w: 0.2, h: 0.5, fixedT: false, T: 20 },
+      { type: 'fan', name: 'Rideau d\'air', x: 2.2, y: 1.95, w: 0.15, h: 0.1, dir: 'bas', Q: 600 },
+      { type: 'solid', name: 'Caisson du rideau', x: 2.2, y: 2.05, w: 0.15, h: 0.55, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Radiateur', x: 4.85, y: 0.15, w: 0.08, h: 0.6, fixedT: true, T: 50 },
+    ] },
+  tubes: {
+    cfg: { fluid: 'air', L: 2.0, H: 0.4, nx: 320, Tamb: 10, gravity: false, depth: 0.2,
+      sides: { gauche: 'ouvert', droite: 'ouvert', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'fan', name: 'Ventilateur', x: 0.15, y: 0.0, w: 0.06, h: 0.4, dir: 'droite', Q: 300 },
+      { type: 'solid', name: 'Tube', x: 0.60, y: 0.08, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.60, y: 0.18, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.60, y: 0.28, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.69, y: 0.03, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.69, y: 0.13, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.69, y: 0.23, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.69, y: 0.33, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.78, y: 0.08, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.78, y: 0.18, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.78, y: 0.28, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.87, y: 0.03, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.87, y: 0.13, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.87, y: 0.23, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.87, y: 0.33, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.96, y: 0.08, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.96, y: 0.18, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+      { type: 'solid', name: 'Tube', x: 0.96, y: 0.28, w: 0.04, h: 0.04, fixedT: true, T: 70 },
+    ] },
+  lac: {
+    cfg: { fluid: 'eau4', L: 0.6, H: 0.3, nx: 240, Tamb: 10, gravity: true, depth: 0.1,
+      sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'solid', name: 'Glace (0 °C)', x: 0.0, y: 0.285, w: 0.6, h: 0.015, fixedT: true, T: 0 },
+      { type: 'solid', name: 'Berge', x: 0.0, y: 0.0, w: 0.12, h: 0.1, fixedT: false, T: 10 },
+    ] },
+  canyon: {
+    cfg: { fluid: 'air', L: 60, H: 30, nx: 300, Tamb: 20, gravity: true, depth: 1,
+      sides: { gauche: 'ouvert', droite: 'ouvert', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'fan', name: 'Vent (3 m/s)', x: 3, y: 0, w: 1, h: 30, dir: 'droite', Q: 324000 },
+      { type: 'solid', name: 'Immeuble amont', x: 18, y: 0, w: 10, h: 10, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Immeuble aval', x: 38, y: 0, w: 10, h: 10, fixedT: false, T: 20 },
+      { type: 'solid', name: 'Façade ensoleillée', x: 37.6, y: 0, w: 0.4, h: 10, fixedT: true, T: 45 },
+    ] },
+  ballon: {
+    cfg: { fluid: 'eau', L: 0.5, H: 1.4, nx: 120, Tamb: 15, gravity: true, depth: 0.5,
+      sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } },
+    comps: [
+      { type: 'solid', name: 'Résistance', x: 0.1, y: 0.12, w: 0.3, h: 0.025, fixedT: true, T: 75 },
+    ] },
+  bassin: {
+    cfg: { fluid: 'air', L: 6.0, H: 2.0, nx: 300, Tamb: 5, gravity: true, depth: 1,
+      sides: { gauche: 'ouvert', droite: 'ouvert', bas: 'paroi', haut: 'ouvert' } },
+    comps: [
+      { type: 'solid', name: 'Surface de l\'eau (28 °C)', x: 1.0, y: 0.0, w: 4.0, h: 0.06, fixedT: true, T: 28 },
+      { type: 'solid', name: 'Couverture isolante', x: 3.0, y: 0.06, w: 2.0, h: 0.03, fixedT: false, T: 20 },
     ] },
 };
 
@@ -707,7 +857,7 @@ function endDrag() {
     const r = normRect(drag);
     if (r.w > 2 * solver.dx && r.h > solver.dx) {
       const c = { id: nextId++, type: tool, ...JSON.parse(JSON.stringify(DEF[tool])), ...r };
-      if (tool === 'fan') { const v = cfg.fluid === 'eau' ? 0.05 : 1.5; c.Q = Math.max(1, Math.round(v * c.h * cfg.depth * 3600 / 10) * 10); }
+      if (tool === 'fan') { const v = cfg.fluid !== 'air' ? 0.05 : 1.5; c.Q = Math.max(1, Math.round(v * c.h * cfg.depth * 3600 / 10) * 10); }
       const same = comps.filter(o => o.type === tool).length;
       if (same) c.name += ' ' + (same + 1);
       clampComp(c); comps.push(c); selected = c.id;

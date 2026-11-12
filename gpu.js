@@ -4,6 +4,7 @@ struct Params {
   N: u32, nx: u32, nf: u32, ne: u32,
   tau0: f32, taug0: f32, gb: f32, cs2x: f32,
   ramp: f32, peCell: f32, sE: f32, sEps: f32,
+  gb2: f32, pad0: f32, pad1: f32, pad2: f32,
 };
 @group(0) @binding(0) var<uniform> P: Params;
 // fg : populations f (0..8) puis g (9..13), en double tampon
@@ -81,7 +82,7 @@ fn step(@builtin(global_invocation_id) gid: vec3<u32>) {
   let th = g[0] + g[1] + g[2] + g[3] + g[4];
   // forces
   var Fx = 0.0;
-  var Fy = rho * P.gb * th;
+  var Fy = rho * th * (P.gb + P.gb2 * th);
   let fq = ci.z;
   var fd = vec2<f32>(0.0, 0.0);
   if (fq >= 0) {
@@ -217,7 +218,7 @@ class GpuSolver extends Solver {
     const mk = (size, usage) => dev.createBuffer({ size: Math.max(16, Math.ceil(size / 16) * 16), usage });
     const S = B.STORAGE | B.COPY_DST | B.COPY_SRC;
     this.bufs = {
-      params: mk(48, B.UNIFORM | B.COPY_DST),
+      params: mk(64, B.UNIFORM | B.COPY_DST),
       fg: [mk(14 * N * 4, S), mk(14 * N * 4, S)],
       mac: mk(4 * N * 4, S),
       nb: mk(9 * N * 4, S),
@@ -304,10 +305,10 @@ class GpuSolver extends Solver {
   }
 
   writeParams() {
-    const buf = new ArrayBuffer(48), u = new Uint32Array(buf), f = new Float32Array(buf);
+    const buf = new ArrayBuffer(64), u = new Uint32Array(buf), f = new Float32Array(buf);
     u[0] = this.N; u[1] = this.nx; u[2] = this.fans.length; u[3] = this.exch.length;
     f[4] = this.tau0; f[5] = this.taug0; f[6] = this.gb; f[7] = 18 * Math.SQRT2 * CS * CS;
-    f[8] = this.ramp(); f[9] = PE_CELL; f[10] = S_E; f[11] = S_EPS;
+    f[8] = this.ramp(); f[9] = PE_CELL; f[10] = S_E; f[11] = S_EPS; f[12] = this.gb2;
     this.dev.queue.writeBuffer(this.bufs.params, 0, buf);
   }
 

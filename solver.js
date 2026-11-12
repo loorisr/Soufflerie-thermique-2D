@@ -6,6 +6,8 @@
 const FLUIDS = {
   air: { name: 'Air', rho: 1.204, nu: 1.50e-5, Pr: 0.71, beta: 3.43e-3, cp: 1006 },
   eau: { name: 'Eau', rho: 998.2, nu: 1.00e-6, Pr: 7.0, beta: 2.07e-4, cp: 4182 },
+  // eau froide : ρ = ρmax (1 − k (T − 4)²), densité maximale à 4 °C (flottabilité quadratique)
+  eau4: { name: 'Eau froide (densité max à 4 °C)', rho: 999.97, nu: 1.57e-6, Pr: 11.6, beta: 0, k2: 8.0e-6, Tmax: 4, cp: 4205 },
 };
 
 const CX = [0, 1, 0, -1, 0, 1, -1, -1, 1];
@@ -77,7 +79,10 @@ class Solver {
       if (c.type === 'exchanger') dTmax = Math.max(dTmax, c.mode === 'T' ? Math.abs(c.Tc - cfg.Tamb) : 15);
       if (c.type === 'solid' && c.fixedT) dTmax = Math.max(dTmax, Math.abs(c.T - cfg.Tamb));
     }
-    if (cfg.gravity) U = Math.max(U, 0.5 * Math.sqrt(9.81 * fl.beta * dTmax * cfg.H));
+    // flottabilité : g (β θ + k2 θ (θ + 2 (Tamb − Tmax))), écrite g θ (b1 + b2 θ)
+    const k2 = fl.k2 || 0, b1 = fl.beta + 2 * k2 * (cfg.Tamb - (fl.Tmax || 0));
+    const betaEff = Math.abs(b1) + k2 * dTmax;
+    if (cfg.gravity) U = Math.max(U, 0.5 * Math.sqrt(9.81 * betaEff * dTmax * cfg.H));
     this.Uref = U;
     this.ulat = 0.07;
     this.dt = this.ulat * dx / U;
@@ -90,7 +95,8 @@ class Solver {
     this.taug0 = Math.max(0.5 + 3 * all, TAUG_MIN);
     this.nuEff = (this.tau0 - 0.5) / 3 * dx * dx / this.dt;
     this.alphaEff = (this.taug0 - 0.5) / 3 * dx * dx / this.dt;
-    this.gb = cfg.gravity ? 9.81 * fl.beta * this.dt * this.dt / dx : 0;
+    this.gb = cfg.gravity ? 9.81 * b1 * this.dt * this.dt / dx : 0;
+    this.gb2 = cfg.gravity ? 9.81 * k2 * this.dt * this.dt / dx : 0;
   }
 
   setComponents(comps) {
@@ -209,7 +215,7 @@ class Solver {
     const { N, nb, type, drag, hk, hT, hq, zone, fan, Tw, sponge } = this;
     const fA = this.f0, fB = this.f1, gA = this.g0, gB = this.g1;
     const rhoA = this.rho, uxA = this.ux, uyA = this.uy, thA = this.th;
-    const tau0 = this.tau0, taug0 = this.taug0, gb = this.gb;
+    const tau0 = this.tau0, taug0 = this.taug0, gb = this.gb, gb2 = this.gb2;
     const Cs2x = 18 * Math.SQRT2 * CS * CS;
     const fans = this.fans, exch = this.exch;
     const ramp = this.ramp();
@@ -256,7 +262,7 @@ class Solver {
       const mx = m[3], my = m[5];
       const th = g[0] + g[1] + g[2] + g[3] + g[4];
       // forces
-      let Fx = 0, Fy = rho * gb * th;
+      let Fx = 0, Fy = rho * th * (gb + gb2 * th);
       const fq = fan[idx];
       if (fq >= 0) { Fx += rho * fanF[fq] * fdx[fq]; Fy += rho * fanF[fq] * fdy[fq]; }
       let ux = (mx + 0.5 * Fx) / rho, uy = (my + 0.5 * Fy) / rho;

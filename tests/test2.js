@@ -1,5 +1,5 @@
 const { Solver } = require('../solver.js');
-for (const fluid of ['air','eau']) {
+for (const fluid of ['air','eau','eau4']) {
 const cfg = { fluid, L: 3.0, H: 2.5, nx: 200, Tamb: 18, gravity: true, depth: 1,
   sides: { gauche: 'paroi', droite: 'paroi', bas: 'paroi', haut: 'paroi' } };
 const comps = [
